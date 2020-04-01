@@ -3,3 +3,4 @@ data/*
 work_space/log/*
 work_space/models/*
 work_space/save/*
+__pycache__/*
