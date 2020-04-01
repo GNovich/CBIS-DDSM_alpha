@@ -61,7 +61,7 @@ class PreBuildConverter:
 
     def ResNet(self, name='resnet50'):
         model = getattr(models, name)()
-        conv = model.c0nv1
+        conv = model.conv1
         classifier = model.fc
 
         model.conv1 = Conv2d(self.in_channels, conv.out_channels,
