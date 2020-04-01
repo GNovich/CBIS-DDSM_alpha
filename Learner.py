@@ -15,6 +15,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from sklearn.metrics import roc_curve
 import numpy as np
 import cv2
+from models import PreBuildConverter
 plt.switch_backend('agg')
 
 
@@ -23,15 +24,11 @@ class Learner(object):
         print(conf)
 
         # -----------   define model --------------- #
-        def base_model():
-            # a very basic resnet50 for greyscale images with binary res
-            model = resnet50(pretrained=False)
-            model.conv1 = Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            model.fc = Linear(in_features=2048, out_features=2, bias=True)
-            return model
-
-        self.models = [base_model().to(conf.device) for _ in range(conf.n_models)]
-        print('{}_{} models generated'.format(conf.net_mode, conf.net_depth))
+        build_model = PreBuildConverter(in_channels=1, out_classes=2, add_soft_max=True)
+        self.models = []
+        for _ in range(conf.n_models):
+            self.models.append(build_model.get_by_str(conf.net_mode).to(conf.device))
+        print('{} {} models generated'.format(conf.n_models, conf.net_mode))
 
         # ------------  define loaders -------------- #
         dloader_args = {
@@ -46,11 +43,7 @@ class Learner(object):
         file_ext = ('.png',)
         im_trans = conf.im_transform
         self.dataset = DatasetFolder(conf.train_folder, extensions=file_ext, loader=grey_loader, transform=im_trans)
-        valid_size = int(np.floor(conf.valid_ratio * len(self.dataset)))
-        train_size = len(self.dataset) - valid_size
-        train_dataset, valid_dataset = torch.utils.data.random_split(self.dataset, [train_size, valid_size])
-        self.train_loader = DataLoader(train_dataset, **dloader_args)
-        self.valid_loader = DataLoader(valid_dataset, **dloader_args)
+        self.train_loader = DataLoader(self.dataset, **dloader_args)
 
         self.test_ds = DatasetFolder(conf.test_folder, extensions=file_ext, loader=grey_loader, transform=im_trans)
         self.test_loader = DataLoader(self.test_ds, **dloader_args)
@@ -77,16 +70,20 @@ class Learner(object):
                 paras_wo_bn.append(paras_wo_bn_)
 
             self.optimizer = optim.SGD([
+                                           {'params': paras_wo_bn[model_num],
+                                            'weight_decay': 5e-4}
+                                           for model_num in range(conf.n_models)
+                                       ] + [
                                            {'params': paras_only_bn[model_num]}
                                            for model_num in range(conf.n_models)
                                        ], lr=conf.lr, momentum=conf.momentum)
             print(self.optimizer)
 
             print('optimizers generated')
-            self.board_loss_every = max(len(self.train_loader) // 100, 1)
-            self.evaluate_every = max(len(self.train_loader) // 10, 1)
-            self.save_every = max(len(self.train_loader) // conf.save_per_epoch, 1)
-
+            self.board_loss_every = max(len(self.train_loader) // 5, 1)
+            self.evaluate_every = conf.evaluate_every
+            self.save_every = max(conf.epoch_per_save, 1)
+            assert self.save_every >= self.evaluate_every
         else:
             self.threshold = conf.threshold
 
@@ -134,15 +131,17 @@ class Learner(object):
         self.writer.add_scalar('{}_accuracy'.format(db_name), accuracy, self.step)
         self.writer.add_image('{}_roc_curve'.format(db_name), roc_curve_tensor, self.step)
 
-    def evaluate(self, conf, model_num):
+    def evaluate(self, conf, model_num, mode='test'):
         model = self.models[model_num]
         model.eval()
 
         predictions = []
         prob = []
         labels = []
+        loader = self.test_loader if mode == 'test' else self.train_loader
         with torch.no_grad():
-            for imgs, label in tqdm(self.valid_loader, total=len(self.valid_loader), desc='valid', position=0):
+            # tqdm(loader, total=len(self.valid_loader), desc='valid', position=1)
+            for imgs, label in loader:
                 imgs = imgs.to(conf.device)
 
                 self.optimizer.zero_grad()
@@ -150,7 +149,7 @@ class Learner(object):
 
                 val, arg = torch.max(theta, dim=1)
                 predictions.append(arg.cpu().numpy())
-                prob.append(val.cpu().numpy())
+                prob.append(theta.cpu().numpy()[:, 1])
                 labels.append(label.detach().cpu().numpy())
         predictions = np.hstack(predictions)
         prob = np.hstack(prob)
@@ -178,14 +177,15 @@ class Learner(object):
         morph_iter = iter(self.morph_loader)
         morph_load = bool(conf.morph_dir)
         epoch_iter = range(epochs)
-        for e in epoch_iter:
+        for e in tqdm(epoch_iter, total=epochs, desc='epoch num'):
             if e == self.milestones[0]:
                 self.schedule_lr()
             if e == self.milestones[1]:
                 self.schedule_lr()
             if e == self.milestones[2]:
                 self.schedule_lr()
-            for imgs, labels in tqdm(self.train_loader, desc='epoch {}'.format(e), position=1):
+            # tqdm(self.train_loader, desc='epoch {}'.format(e), position=0)
+            for imgs, labels in self.train_loader:
                 imgs = imgs.to(conf.device)
                 labels = labels.to(conf.device)
 
@@ -209,17 +209,17 @@ class Learner(object):
                 thetas = []
                 joint_losses = []
                 morph_thetas = []
-                for model in self.models:
+                for model_num in range(conf.n_models):
                     if use_morph:
                         cat_inputs = torch.cat([imgs, morphs])
-                        cat_emb = model(cat_inputs)
+                        cat_emb = self.models[model_num](cat_inputs)
                         theta = cat_emb[:imgs.shape[0], :]
                         theta_morph = cat_emb[imgs.shape[0]:, :]
                         thetas.append(theta)
                         morph_thetas.append(theta_morph)
                         joint_losses.append(conf.ce_loss(theta, labels))
                     else:
-                        theta = model(imgs)
+                        theta = self.models[model_num](imgs)
                         thetas.append(theta)
                         joint_losses.append(conf.ce_loss(theta, labels))
 
@@ -280,17 +280,18 @@ class Learner(object):
                         self.writer.add_scalar('morph_loss', loss_board, self.step)
                         running_morph_loss = 0.
 
-                # listen to validation and save every so often
-                for model_num in range(conf.n_models):
-                    # see validation set
-                    if self.step % self.evaluate_every == 0 and self.step != 0:
-                        accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num)
-                        self.board_val('mod_val', accuracy, roc_curve_tensor)
-                        self.models[model_num].train()
-                    if self.step % self.save_every == 0 and self.step != 0:
-                        self.save_state(conf, accuracy)
-
                 self.step += 1
+
+            # listen to validation and save every so often
+            if e % self.evaluate_every == 0 and e != 0:
+                for model_num in range(conf.n_models):
+                    accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='train')
+                    self.board_val('mod_train_'+str(model_num), accuracy, roc_curve_tensor)
+                    accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='test')
+                    self.board_val('mod_test_' + str(model_num), accuracy, roc_curve_tensor)
+                    self.models[model_num].train()
+            if e % self.save_every == 0 and e != 0:
+                self.save_state(conf, accuracy)
 
         self.save_state(conf, accuracy, to_save_folder=True, extra='final')
 

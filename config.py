@@ -7,7 +7,7 @@ from PIL import Image
 def get_config(training=True):
     conf = edict()
     conf.data_path = Path('data')
-    conf.work_path = Path('work_space/')
+    conf.work_path = Path('work_space')
     conf.model_path = conf.work_path / 'models'
     conf.log_path = conf.work_path / 'log'
     conf.save_path = conf.work_path / 'save'
@@ -16,17 +16,18 @@ def get_config(training=True):
     conf.use_mobilfacenet = False
     conf.net_depth = 50
     conf.drop_ratio = 0.6
-    conf.net_mode = 'ir_se'  # or 'ir
+    conf.net_mode = 'resnet50'  # or 'ir
     conf.im_transform = trans.Compose([
             Image.fromarray,
             trans.Resize((225, 225)),
             trans.RandomHorizontalFlip(),
+            trans.RandomVerticalFlip(),
             trans.ToTensor(),
-            # trans.Normalize([0.5], [0.5])
+            trans.Normalize([0.5], [0.5])
     ])
-    conf.data_mode = 'crop'
-    conf.train_folder = conf.data_path / 'train'
-    conf.test_folder = conf.data_path / 'test'
+    conf.data_mode = 'crop_data'
+    conf.train_folder = conf.data_path / conf.data_mode / 'train'
+    conf.test_folder = conf.data_path / conf.data_mode / 'test'
     conf.valid_ratio = .2
     conf.batch_size = 100  # irse net depth 50
 
@@ -37,7 +38,7 @@ def get_config(training=True):
     conf.lr = 1e-3
     conf.momentum = 0.9
     conf.pin_memory = True
-    conf.num_workers = 3
+    conf.num_workers = 1
     conf.ce_loss = CrossEntropyLoss()
 
     return conf
