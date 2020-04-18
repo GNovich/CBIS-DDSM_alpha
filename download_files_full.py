@@ -1,3 +1,4 @@
+# python 2
 import zipfile
 import tciaclient
 import pandas as pd
@@ -35,21 +36,24 @@ resource = "TCIA"
 
 client = tciaclient.TCIAClient(api_key, baseUrl, resource)
 
-series_description = 'cropped images'
-im_type = 'cropped image file path'
-started_files = False
+# image file path, cropped image file path, ROI mask file pat
+im_type = 'image file path'
+dir_name = 'image_file'
+dir_name_full = 'data/image_file'
 
-data_sets = ['calc_case_description_train_set.csv',
-             'mass_case_description_train_set.csv',
-             'calc_case_description_test_set.csv',
-             'mass_case_description_test_set.csv']
+# 'full mammogram images', 'cropped images', ''
+series_description = 'full mammogram images'
 
-if not os.path.exists('data/train'): os.mkdir('data/train')
-if not os.path.exists('data/test'): os.mkdir('data/test')
-if not os.path.exists('data/train/0'): os.mkdir('data/train/0')
-if not os.path.exists('data/train/1'): os.mkdir('data/train/1')
-if not os.path.exists('data/test/0'): os.mkdir('data/test/0')
-if not os.path.exists('data/test/1'): os.mkdir('data/test/1')
+csv_dir = 'csv_files'
+data_sets = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir)]
+
+if not os.path.exists(dir_name_full): os.mkdir(dir_name_full)
+if not os.path.exists(dir_name_full+'/train'): os.mkdir(dir_name_full+'/train')
+if not os.path.exists(dir_name_full+'/test'): os.mkdir(dir_name_full+'/test')
+if not os.path.exists(dir_name_full+'/train/0'): os.mkdir(dir_name_full+'/train/0')
+if not os.path.exists(dir_name_full+'/train/1'): os.mkdir(dir_name_full+'/train/1')
+if not os.path.exists(dir_name_full+'/test/0'): os.mkdir(dir_name_full+'/test/0')
+if not os.path.exists(dir_name_full+'/test/1'): os.mkdir(dir_name_full+'/test/1')
 
 log = open('log', 'w')
 label_map = {'MALIGNANT': 0, 'BENIGN': 1, 'BENIGN_WITHOUT_CALLBACK': 1}
@@ -63,7 +67,7 @@ for dataset_name in data_sets:
     for i, (path, png_filename, label) in tqdm.tqdm(
             enumerate(zip(dataset[im_type], dataset[im_type + ' png'], dataset['label'])), total=len(dataset)):
         outdir = os.path.join('data', 'tmp')
-        final_path = os.path.join('data', dat_type, str(label), png_filename)
+        final_path = os.path.join('data', dir_name, dat_type, str(label), png_filename)
         if os.path.exists(final_path):
             continue
 
@@ -87,12 +91,12 @@ for dataset_name in data_sets:
 
             found = True
             # save the image as png wit hapropriot path
-            cv2.imwrite(os.path.join('data', dat_type, str(label), png_filename), ds.pixel_array)
-        shutil.rmtree(outdir)
+            cv2.imwrite(final_path, ds.pixel_array)
         if not found:  # alert and I'll look into it someday...
             log.write(str(i))
             print(i)
+        shutil.rmtree(outdir)
         #assert (found)  # all files must be found
-    dataset.to_csv('new_' + dataset_name)
+    dataset.to_csv(dataset_name)
 
 
