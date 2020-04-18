@@ -1,5 +1,6 @@
 from config import get_config
 from Learner import Learner
+from PatchLearner import PatchLearner, PatchLearnerMult
 import argparse
 import torch
 from functools import partial
@@ -18,9 +19,13 @@ if __name__ == '__main__':
 
     parser.add_argument("-n", "--n_models", help="how many duplicate nets to use. 1 leads to basic training, "
                                                  "making -a and -p flags redundant", default=1, type=int)
+    parser.add_argument("-patch", "--n_patch", help="how many patches per image", default=10, type=int)
+    parser.add_argument("-bkg", "--bkg_prob", help="how many patches per image", default=.2, type=float)
+    parser.add_argument("-mul", "--mul", help="use mult mode?", default=0, type=int)
+    parser.add_argument("-rank", "--local_rank", help="rank for mul", default=0, type=int)
 
     # TODO maybe add option to specify a network mix instead of duplicates
-    parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[.5, .75, .9], type=float, nargs='*')
+    parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[], type=float, nargs='*')
     parser.add_argument("-a", "--alpha", help="balancing parameter", default=0, type=float)
     parser.add_argument("-t", "--sig_thresh", help="thresholding of the most correct class", default=0.9, type=float)
     parser.add_argument("-p", "--pearson", help="using pearson loss", default=False, type=bool)
@@ -35,8 +40,11 @@ if __name__ == '__main__':
     conf = get_config()
 
     # training param
+    conf.local_rank = args.local_rank
+    conf.n_patch = args.n_patch
+    conf.bkg_prob = args.bkg_prob
     conf.net_mode = args.net_mode
-    conf.evaluate_every = 5  # TODO see if relevant
+    conf.evaluate_every = 3  # TODO see if relevant
     conf.epoch_per_save = args.epoch_per_save
     conf.data_mode = args.data_mode
     conf.cpu_mode = args.cpu_mode
@@ -65,6 +73,7 @@ if __name__ == '__main__':
     conf.morph_loss = MSELoss()
 
     # create learner and go
-    learner = Learner(conf)
+    conf.log_path = str(conf.log_path) + '_' + ''.join([str(conf.net_mode), str(conf.lr), str(conf.batch_size)])
+    learner = PatchLearnerMult(conf) if args.mul else PatchLearner(conf)
     # face_learner(conf) if conf.n_models == 1 else face_learner_corr(conf)
     learner.train(conf, conf.epochs)

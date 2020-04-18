@@ -157,7 +157,7 @@ class Learner(object):
 
         res = (predictions == labels)
         acc = sum(res) / len(res)
-        tpr, fpr, _ = roc_curve(res, prob)
+        fpr, tpr, _ = roc_curve(res, prob)
         buf = gen_plot(fpr, tpr)
         roc_curve_im = Image.open(buf)
         roc_curve_tensor = trans.ToTensor()(roc_curve_im)
