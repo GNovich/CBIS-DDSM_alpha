@@ -42,26 +42,11 @@ class CBIS_Dataloader:
             zip(self.test_table['label'], self.test_table['abnormality type'])).astype('category').cat.codes + 1
         self.test_table['pos_label'] = self.test_table['pos_label'].astype(int)
 
-        """
-        roi_col = 'ROI mask file path png'
-        mam_col = 'image file path png'
-        print('missing')
-        not_in = 0
-        for i,row in self.train_table.iterrows():
-            roi_path = os.path.join(self.roi_dir_name, 'train', str(row['label']), row[roi_col])
-            mam_path = os.path.join(self.mam_dir_name, 'train', str(row['label']), row[mam_col])
-            if not os.path.exists(mam_path) or not os.path.exists(roi_path):
-                not_in += 1
-        print(not_in/len(self.train_table), not_in)
+        # 1 know faulty sample
+        self.test_table = self.test_table[self.test_table['ROI mask file path png'] != 'Calc-Training_P_00474_LEFT_MLO_1.png']
+        self.train_table = self.train_table[
+            self.train_table['ROI mask file path png'] != 'Calc-Training_P_00474_LEFT_MLO_1.png']
 
-        not_in = 0
-        for i, row in self.test_table.iterrows():
-            roi_path = os.path.join(self.roi_dir_name, 'test', str(row['label']), row[roi_col])
-            mam_path = os.path.join(self.mam_dir_name, 'test', str(row['label']), row[mam_col])
-            if not os.path.exists(mam_path) or not os.path.exists(roi_path):
-                not_in += 1
-        print(not_in / len(self.test_table), not_in)
-        """
         self.src_transform = trans.Compose([
             Image.fromarray,
             trans.Resize(og_resize),
@@ -254,7 +239,14 @@ class CBIS_PatchDataSet(Dataset):
             trans.ToTensor()
         ])
 
-    def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1):
+    def get_cont(self, im):
+        _, contours, _ = cv2.findContours(im.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cont_areas = [cv2.contourArea(cont) for cont in contours]
+        idx = np.argmax(cont_areas)  # find the largest contour.
+        rx, ry, rw, rh = cv2.boundingRect(contours[idx])
+        return rx, ry, rw, rh
+
+    def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1, hard_center=True):
         patch_size = self.patch_size
         rng = np.random.RandomState(self.seed or None)
         roi_f = (np.array(roi_image) > 0).astype(float)
@@ -276,7 +268,23 @@ class CBIS_PatchDataSet(Dataset):
                                   (abn_targets[:, 0] - (patch_size // 2) > 0) &
                                   (abn_targets[:, 1] + (patch_size // 2) < roi_f.shape[1]) &
                                   (abn_targets[:, 1] - (patch_size // 2) > 0)]
+
+        if hard_center:
+            upleft_x, upleft_y, rw, rh = self.get_cont(np.array(roi_image))
+            abn_targets = abn_targets[(abn_targets[:, 0] < upleft_y + rh) &
+                                      (abn_targets[:, 0] > upleft_y) &
+                                      (abn_targets[:, 1] < upleft_x + rw) &
+                                      (abn_targets[:, 1] > upleft_x)]
+
         assert len(abn_targets) > 0  # TODO make sure no funny buisness
+
+        # force centering of roi
+        abn_targets = abn_targets[(abn_targets[:, 0] + (patch_size // 2) < roi_f.shape[0]) &
+                                  (abn_targets[:, 0] - (patch_size // 2) > 0) &
+                                  (abn_targets[:, 1] + (patch_size // 2) < roi_f.shape[1]) &
+                                  (abn_targets[:, 1] - (patch_size // 2) > 0)]
+        assert len(abn_targets) > 0  # TODO make sure no funny buisness
+
         abn_targets = abn_targets[rng.choice(len(abn_targets), self.nb_abn)]
 
         # background
@@ -437,7 +445,14 @@ class CBIS_PatchDataSet_INMEM(Dataset):
                 # Calculate len
         self.data_len = len(self.label_arr)
 
-    def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1):
+    def get_cont(self, im):
+        _, contours, _ = cv2.findContours(im.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cont_areas = [cv2.contourArea(cont) for cont in contours]
+        idx = np.argmax(cont_areas)  # find the largest contour.
+        rx, ry, rw, rh = cv2.boundingRect(contours[idx])
+        return rx, ry, rw, rh
+
+    def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1, hard_center=True):
         patch_size = self.patch_size
         rng = np.random.RandomState(self.seed or None)
         roi_f = (np.array(roi_image) > 0).astype(float)
@@ -464,6 +479,12 @@ class CBIS_PatchDataSet_INMEM(Dataset):
                                       (abn_targets[:, 0] - (patch_size // 2) > 0) &
                                       (abn_targets[:, 1] + (patch_size // 2) < roi_f.shape[1]) &
                                       (abn_targets[:, 1] - (patch_size // 2) > 0)]
+            if hard_center:
+                upleft_x, upleft_y, rw, rh = self.get_cont(np.array(roi_image))
+                abn_targets = abn_targets[(abn_targets[:, 0] < upleft_y + rh) &
+                                          (abn_targets[:, 0] > upleft_y) &
+                                          (abn_targets[:, 1] < upleft_x + rw) &
+                                          (abn_targets[:, 1] > upleft_x)]
             assert len(abn_targets) > 0  # TODO make sure no funny buisness
             targets = abn_targets[rng.choice(len(abn_targets), nb_abn)]
 
