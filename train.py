@@ -23,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument("-bkg", "--bkg_prob", help="how many patches per image", default=.2, type=float)
     parser.add_argument("-mul", "--mul", help="use mult mode?", default=0, type=int)
     parser.add_argument("-rank", "--local_rank", help="rank for mul", default=0, type=int)
+    parser.add_argument("-pre", "--pre_train", help="use a pretrain net?", default=0, type=int)
 
     # TODO maybe add option to specify a network mix instead of duplicates
     parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[], type=float, nargs='*')
@@ -40,6 +41,7 @@ if __name__ == '__main__':
     conf = get_config()
 
     # training param
+    conf.pre_train = args.pre_train
     conf.local_rank = args.local_rank
     conf.n_patch = args.n_patch
     conf.bkg_prob = args.bkg_prob
@@ -73,7 +75,11 @@ if __name__ == '__main__':
     conf.morph_loss = MSELoss()
 
     # create learner and go
-    conf.log_path = str(conf.log_path) + '_' + ''.join([str(conf.net_mode), str(conf.lr), str(conf.batch_size)])
+    conf.log_path = str(conf.log_path) + '_' + '_'.join([str(conf.net_mode), str(conf.lr), str(conf.batch_size), str(conf.n_patch)])
     learner = PatchLearnerMult(conf) if args.mul else PatchLearner(conf)
     # face_learner(conf) if conf.n_models == 1 else face_learner_corr(conf)
-    learner.train(conf, conf.epochs)
+
+    if conf.pre_train:
+        learner.pretrain(conf)
+    else:
+        learner.train(conf, conf.epochs)

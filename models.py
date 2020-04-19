@@ -3,6 +3,10 @@ from torch.nn import Conv2d, Linear, Sequential, Softmax
 from string import digits
 import torch
 
+three_step_params = {'resnet18':[59, 44],
+                     'resnet50':[158, 128],
+                     'vgg16':[-1, 15],
+                     'vgg19':[-1, 17]}
 
 def convert_syncbn_model(module, process_group=None):
     '''
@@ -31,10 +35,11 @@ def convert_syncbn_model(module, process_group=None):
     return mod
 
 class PreBuildConverter:
-    def __init__(self, in_channels, out_classes, add_soft_max=True):
+    def __init__(self, in_channels, out_classes, add_soft_max=True, pretrained=False):
         self.in_channels = in_channels
         self.out_classes = out_classes
         self.soft_max = add_soft_max
+        self.pretrained = pretrained
 
     def get_by_str(self, name):
         name_clean = name.translate(str.maketrans('', '', digits)).lower()
@@ -50,20 +55,21 @@ class PreBuildConverter:
             return self.LeNet(name)
 
     def VGG(self, name='vgg16'):
-        model = getattr(models, name)()
+        model = getattr(models, name)(pretrained=self.pretrained)
         conv = model.features[0]
         classifier = model.classifier[-1]
 
         model.features[0] = Conv2d(self.in_channels, conv.out_channels,
                                    kernel_size=conv.kernel_size, stride=conv.stride,
                                    padding=conv.padding, bias=conv.bias)
+        model.features[0].weight.data = conv.weight.mean(1).unsqueeze(1)  # inherit og 1st layer weights
         model.classifier[-1] = Linear(in_features=classifier.in_features,
                                       out_features=self.out_classes, bias=True)
 
         return Sequential(model, Softmax(1)) if self.soft_max else model
 
     def DenseNet(self, name='densenet121'):
-        model = getattr(models, name)()
+        model = getattr(models, name)(pretrained=self.pretrained)
         conv = model.features[0]
         classifier = model.classifier
 
@@ -76,26 +82,28 @@ class PreBuildConverter:
         return Sequential(model, Softmax(1)) if self.soft_max else model
 
     def MobileNet(self):
-        model = getattr(models, 'mobilenet_v2')()
+        model = getattr(models, 'mobilenet_v2')(pretrained=self.pretrained)
         conv = model.features[0][0]
         classifier = model.classifier[-1]
 
         model.features[0][0] = Conv2d(self.in_channels, conv.out_channels,
                                       kernel_size=conv.kernel_size, stride=conv.stride,
                                       padding=conv.padding, bias=conv.bias)
+        # todo inherit og 1st layer weights
         model.classifier[-1] = Linear(in_features=classifier.in_features,
                                       out_features=self.out_classes, bias=True)
 
         return Sequential(model, Softmax(1)) if self.soft_max else model
 
     def ResNet(self, name='resnet50'):
-        model = getattr(models, name)()
+        model = getattr(models, name)(pretrained=bool(self.pretrained))
         conv = model.conv1
         classifier = model.fc
 
         model.conv1 = Conv2d(self.in_channels, conv.out_channels,
                                       kernel_size=conv.kernel_size, stride=conv.stride,
                                       padding=conv.padding, bias=conv.bias)
+        model.conv1.weight.data = conv.weight.mean(1).unsqueeze(1)  # inherit og 1st layer weights
         model.fc = Linear(in_features=classifier.in_features,
                                       out_features=self.out_classes, bias=True)
 
@@ -103,13 +111,14 @@ class PreBuildConverter:
 
 
     def LeNet(self):
-        model = getattr(models, 'GoogLeNet')()
+        model = getattr(models, 'GoogLeNet')(pretrained=self.pretrained)
         conv = model.conv1[0]
         classifier = model.fc
 
         model.conv1[0] = Conv2d(self.in_channels, conv.out_channels,
                                       kernel_size=conv.kernel_size, stride=conv.stride,
                                       padding=conv.padding, bias=conv.bias)
+        # todo inherit og 1st layer weights
         model.fc = Linear(in_features=classifier.in_features,
                                       out_features=self.out_classes, bias=True)
 

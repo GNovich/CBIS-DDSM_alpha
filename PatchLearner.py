@@ -17,6 +17,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import WeightedRandomSampler
 import os
 import pandas as pd
+from models import three_step_params
 plt.switch_backend('agg')
 
 
@@ -24,7 +25,7 @@ class PatchLearner(object):
     def __init__(self, conf):
 
         # -----------   define model --------------- #
-        build_model = PreBuildConverter(in_channels=1, out_classes=5, add_soft_max=True)
+        build_model = PreBuildConverter(in_channels=1, out_classes=5, add_soft_max=True, pretrained=conf.pre_train)
         self.models = []
         for _ in range(conf.n_models):
             self.models.append(build_model.get_by_str(conf.net_mode).to(conf.device))
@@ -36,6 +37,8 @@ class PatchLearner(object):
         self.step = 0
         print('two model heads generated')
 
+        self.get_opt()
+        """
         paras_only_bn = []
         paras_wo_bn = []
         for model in self.models:
@@ -51,6 +54,7 @@ class PatchLearner(object):
                                        {'params': paras_only_bn[model_num]}
                                        for model_num in range(conf.n_models)
                                    ], lr=conf.lr, momentum=conf.momentum)
+        """
         print(self.optimizer)
 
         # ------------  define loaders -------------- #
@@ -66,6 +70,22 @@ class PatchLearner(object):
         self.evaluate_every = conf.evaluate_every
         self.save_every = max(conf.epoch_per_save, 1)
         assert self.save_every >= self.evaluate_every
+
+    def get_opt(self, conf):
+        paras_only_bn = []
+        paras_wo_bn = []
+        for model in self.models:
+            paras_only_bn_, paras_wo_bn_ = separate_bn_paras(model)
+            paras_only_bn.append(paras_only_bn_)
+            paras_wo_bn.append(paras_wo_bn_)
+
+        self.optimizer = optim.SGD([
+                                       {'params': paras_wo_bn[model_num]}  # , 'weight_decay': 5e-4} #TODO check
+                                       for model_num in range(conf.n_models)
+                                   ] + [
+                                       {'params': paras_only_bn[model_num]}
+                                       for model_num in range(conf.n_models)
+                                   ], lr=conf.lr, momentum=conf.momentum)
 
     def save_state(self, conf, accuracy, to_save_folder=False, extra=None, model_only=False):
         if to_save_folder:
@@ -147,6 +167,38 @@ class PatchLearner(object):
         roc_curve_im = Image.open(buf)
         roc_curve_tensor = trans.ToTensor()(roc_curve_im)
         return acc, roc_curve_tensor
+
+    def pretrain(self, conf):
+        # Stage 1: train only the last dense layer if using pretrained model.
+        for model_num in range(conf.n_models):
+            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
+                param.requires_grad = (i > three_step_params[conf.net_mode][0])
+        self.get_opt(conf)
+        self.train(conf, 3)
+
+        # Stage 2: train only the top layers.
+        for model_num in range(conf.n_models):
+            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
+                param.requires_grad = (i > three_step_params[conf.net_mode][1])
+        """
+        # # adjust weight decay and dropout rate for those BN heavy models.
+        # if net == 'xception' or net == 'inception' or net == 'resnet50':
+        dense_layer = org_model.layers[-1]
+        dropout_layer = org_model.layers[-2]
+        dense_layer.kernel_regularizer.l2 = weight_decay2
+        dropout_layer.rate = hidden_dropout2
+        """
+        #self.get_opt(conf)
+        self.schedule_lr()
+        self.train(conf, 10)
+
+        # Stage 3: train all layers.
+        for model_num in range(conf.n_models):
+            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
+                param.requires_grad = True
+        #self.get_opt(conf)
+        self.schedule_lr()
+        self.train(conf, 50)
 
     def train(self, conf, epochs):
         for model_num in range(conf.n_models):
@@ -252,7 +304,7 @@ class PatchLearnerMult(object):
     def __init__(self, conf):
 
         # -----------   define model --------------- #
-        build_model = PreBuildConverter(in_channels=1, out_classes=5, add_soft_max=True)
+        build_model = PreBuildConverter(in_channels=1, out_classes=5, add_soft_max=True, pretrained=conf.pre_train)
         self.models = []
         for _ in range(conf.n_models):
             self.models.append(build_model.get_by_str(conf.net_mode).to(conf.device))
@@ -266,6 +318,8 @@ class PatchLearnerMult(object):
         self.step = 0
         print('two model heads generated')
 
+        self.get_opt(conf)
+        """
         paras_only_bn = []
         paras_wo_bn = []
         for model in self.models:
@@ -274,12 +328,14 @@ class PatchLearnerMult(object):
             paras_wo_bn.append(paras_wo_bn_)
 
         self.optimizer = optim.SGD([
-                                       {'params': paras_wo_bn[model_num]}  #, 'weight_decay': 5e-4} #TODO check
+                                       {'params': paras_wo_bn[model_num],
+                                        'weight_decay': 5e-4}
                                        for model_num in range(conf.n_models)
                                    ] + [
                                        {'params': paras_only_bn[model_num]}
                                        for model_num in range(conf.n_models)
                                    ], lr=conf.lr, momentum=conf.momentum)
+        """
         print(self.optimizer)
 
         # ------------  define loaders -------------- #
@@ -318,6 +374,22 @@ class PatchLearnerMult(object):
         self.evaluate_every = conf.evaluate_every
         self.save_every = max(conf.epoch_per_save, 1)
         assert self.save_every >= self.evaluate_every
+
+    def get_opt(self, conf):
+        paras_only_bn = []
+        paras_wo_bn = []
+        for model in self.models:
+            paras_only_bn_, paras_wo_bn_ = separate_bn_paras(model)
+            paras_only_bn.append(paras_only_bn_)
+            paras_wo_bn.append(paras_wo_bn_)
+
+        self.optimizer = optim.SGD([
+                                       {'params': paras_wo_bn[model_num]}  # , 'weight_decay': 5e-4} #TODO check
+                                       for model_num in range(conf.n_models)
+                                   ] + [
+                                       {'params': paras_only_bn[model_num]}
+                                       for model_num in range(conf.n_models)
+                                   ], lr=conf.lr, momentum=conf.momentum)
 
     def save_state(self, conf, accuracy, to_save_folder=False, extra=None, model_only=False):
         if to_save_folder:
@@ -399,11 +471,43 @@ class PatchLearnerMult(object):
         roc_curve_tensor = trans.ToTensor()(roc_curve_im)
         return acc, roc_curve_tensor
 
+    def pretrain(self, conf):
+        # Stage 1: train only the last dense layer if using pretrained model.
+        for model_num in range(conf.n_models):
+            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
+                param.requires_grad = (i > three_step_params[conf.net_mode][0])
+        self.get_opt(conf)
+        self.train(conf, 3)
+
+        # Stage 2: train only the top layers.
+        for model_num in range(conf.n_models):
+            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
+                param.requires_grad = (i > three_step_params[conf.net_mode][1])
+        """
+        # # adjust weight decay and dropout rate for those BN heavy models.
+        # if net == 'xception' or net == 'inception' or net == 'resnet50':
+        dense_layer = org_model.layers[-1]
+        dropout_layer = org_model.layers[-2]
+        dense_layer.kernel_regularizer.l2 = weight_decay2
+        dropout_layer.rate = hidden_dropout2
+        """
+        #self.get_opt(conf)
+        self.schedule_lr()
+        self.train(conf, 10)
+
+        # Stage 3: train all layers.
+        for model_num in range(conf.n_models):
+            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
+                param.requires_grad = True
+        #self.get_opt(conf)
+        self.schedule_lr()
+        self.train(conf, 50)
+
     def train(self, conf, epochs):
         for model_num in range(conf.n_models):
             self.models[model_num].train()
-            #if not conf.cpu_mode:
-                #self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0, 1, 2, 3])
+            if not conf.cpu_mode:
+                self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
                 #self.models[model_num] = torch.nn.parallel.DistributedDataParallel(self.models[model_num], device_ids=[conf.local_rank], output_device=conf.local_rank)
             self.models[model_num].to(conf.device)
 
@@ -412,6 +516,7 @@ class PatchLearnerMult(object):
         running_ensemble_loss = 0.
         running_morph_loss = 0.
         epoch_iter = range(epochs)
+        accuracy = 0
         for e in epoch_iter:
             # check lr update
             for milestone in self.milestones:
@@ -492,7 +597,8 @@ class PatchLearnerMult(object):
             if e % self.save_every == 0 and e != 0:
                 self.save_state(conf, accuracy)
 
-        self.save_state(conf, accuracy, to_save_folder=True, extra='final')
+        if accuracy is not None:
+            self.save_state(conf, accuracy, to_save_folder=True, extra='final')
 
     def schedule_lr(self):
         for params in self.optimizer.param_groups:
