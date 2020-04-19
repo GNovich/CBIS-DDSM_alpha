@@ -56,10 +56,10 @@ class PatchLearner(object):
         # ------------  define loaders -------------- #
 
         self.loader = CBIS_Dataloader(n_patches=2, conf=conf,
-                                      og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=.5)
+                                      og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=1-conf.bkg_prob)
 
         self.eval_loader = CBIS_Dataloader(n_patches=2, conf=conf,
-                                      og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=.5)
+                                      og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=1-conf.bkg_prob)
 
         print('optimizers generated')
         self.board_loss_every = max(self.loader.train_len // 10, 1)

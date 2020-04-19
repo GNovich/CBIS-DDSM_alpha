@@ -35,13 +35,17 @@ class CBIS_Dataloader:
         self.test_table = pd.concat([pd.read_csv(os.path.join(csv_dir, x)) for x in
                                      os.listdir(csv_dir) if 'test' in x])
         # adding label for pos patches, bkg patch is 0
-        self.train_table['pos_label'] = pd.Series(
-            zip(self.train_table['label'], self.train_table['abnormality type'])).astype('category').cat.codes + 1
+        self.train_table['pos_label'] = (pd.Series(
+            zip(self.train_table['label'], self.train_table['abnormality type'])).astype('category').cat.codes + 1).values
         self.train_table['pos_label'] = self.train_table['pos_label'].astype(int)
-        self.test_table['pos_label'] = pd.Series(
-            zip(self.test_table['label'], self.test_table['abnormality type'])).astype('category').cat.codes + 1
+        self.test_table['pos_label'] = (pd.Series(
+            zip(self.test_table['label'], self.test_table['abnormality type'])).astype('category').cat.codes + 1).values
         self.test_table['pos_label'] = self.test_table['pos_label'].astype(int)
-
+        
+        # 1 know faulty sample
+        self.test_table = self.test_table[self.test_table['ROI mask file path png'] != 'Calc-Training_P_00474_LEFT_MLO_1.png']
+        self.train_table = self.train_table[
+            self.train_table['ROI mask file path png'] != 'Calc-Training_P_00474_LEFT_MLO_1.png']
         """
         roi_col = 'ROI mask file path png'
         mam_col = 'image file path png'
@@ -79,7 +83,7 @@ class CBIS_Dataloader:
                 return trans.functional.rotate(x, angle)
 
         self.patch_transform = trans.Compose([
-            trans.Normalize([.5, .5]),
+            #trans.Normalize([.5], [.5]),
             trans.RandomHorizontalFlip(),
             trans.RandomVerticalFlip(),
             RightAngleTransform(),
@@ -247,7 +251,7 @@ class CBIS_PatchDataSet(Dataset):
                 return trans.functional.rotate(x, angle)
 
         self.patch_transform = trans.Compose([
-            trans.Normalize([.5, .5]),
+            #trans.Normalize([.5, .5]),
             trans.RandomHorizontalFlip(),
             trans.RandomVerticalFlip(),
             RightAngleTransform(),
