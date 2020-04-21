@@ -37,7 +37,7 @@ class PatchLearner(object):
         self.step = 0
         print('two model heads generated')
 
-        self.get_opt()
+        self.get_opt(conf)
         """
         paras_only_bn = []
         paras_wo_bn = []
@@ -60,10 +60,10 @@ class PatchLearner(object):
         # ------------  define loaders -------------- #
 
         self.loader = CBIS_Dataloader(n_patches=2, conf=conf,
-                                      og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=1-conf.bkg_prob)
+                                      og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=.5)
 
         self.eval_loader = CBIS_Dataloader(n_patches=2, conf=conf,
-                                      og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=1-conf.bkg_prob)
+                                      og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=.5)
 
         print('optimizers generated')
         self.board_loss_every = max(self.loader.train_len // 10, 1)

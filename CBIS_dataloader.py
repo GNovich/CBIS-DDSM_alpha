@@ -35,38 +35,17 @@ class CBIS_Dataloader:
         self.test_table = pd.concat([pd.read_csv(os.path.join(csv_dir, x)) for x in
                                      os.listdir(csv_dir) if 'test' in x])
         # adding label for pos patches, bkg patch is 0
-        self.train_table['pos_label'] = (pd.Series(
-            zip(self.train_table['label'], self.train_table['abnormality type'])).astype('category').cat.codes + 1).values
+        self.train_table['pos_label'] = pd.Series(
+            zip(self.train_table['label'], self.train_table['abnormality type'])).astype('category').cat.codes + 1
         self.train_table['pos_label'] = self.train_table['pos_label'].astype(int)
-        self.test_table['pos_label'] = (pd.Series(
-            zip(self.test_table['label'], self.test_table['abnormality type'])).astype('category').cat.codes + 1).values
+        self.test_table['pos_label'] = pd.Series(
+            zip(self.test_table['label'], self.test_table['abnormality type'])).astype('category').cat.codes + 1
         self.test_table['pos_label'] = self.test_table['pos_label'].astype(int)
 
         # 1 know faulty sample
         self.test_table = self.test_table[self.test_table['ROI mask file path png'] != 'Calc-Training_P_00474_LEFT_MLO_1.png']
         self.train_table = self.train_table[
             self.train_table['ROI mask file path png'] != 'Calc-Training_P_00474_LEFT_MLO_1.png']
-
-        """
-        roi_col = 'ROI mask file path png'
-        mam_col = 'image file path png'
-        print('missing')
-        not_in = 0
-        for i,row in self.train_table.iterrows():
-            roi_path = os.path.join(self.roi_dir_name, 'train', str(row['label']), row[roi_col])
-            mam_path = os.path.join(self.mam_dir_name, 'train', str(row['label']), row[mam_col])
-            if not os.path.exists(mam_path) or not os.path.exists(roi_path):
-                not_in += 1
-        print(not_in/len(self.train_table), not_in)
-
-        not_in = 0
-        for i, row in self.test_table.iterrows():
-            roi_path = os.path.join(self.roi_dir_name, 'test', str(row['label']), row[roi_col])
-            mam_path = os.path.join(self.mam_dir_name, 'test', str(row['label']), row[mam_col])
-            if not os.path.exists(mam_path) or not os.path.exists(roi_path):
-                not_in += 1
-        print(not_in / len(self.test_table), not_in)
-        """
 
         self.src_transform = trans.Compose([
             Image.fromarray,
@@ -85,7 +64,7 @@ class CBIS_Dataloader:
                 return trans.functional.rotate(x, angle)
 
         self.patch_transform = trans.Compose([
-            #trans.Normalize([.5], [.5]),
+            #trans.Normalize([.5, .5]),
             trans.RandomHorizontalFlip(),
             trans.RandomVerticalFlip(),
             RightAngleTransform(),
@@ -110,7 +89,14 @@ class CBIS_Dataloader:
                                      loader=self.grey_loader, transform=self.src_transform)
         self.test_loader = DataLoader(self.test_ds, **self.dloader_args)
 
-    def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1, nb_abn=10, nb_bkg=10):
+    def get_cont(self, im):
+        _, contours, _ = cv2.findContours(im.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cont_areas = [cv2.contourArea(cont) for cont in contours]
+        idx = np.argmax(cont_areas)  # find the largest contour.
+        rx, ry, rw, rh = cv2.boundingRect(contours[idx])
+        return rx, ry, rw, rh
+
+    def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1, nb_abn=10, nb_bkg=10, hard_center=True):
 
         patch_size = self.patch_size
         rng = np.random.RandomState(self.seed)
@@ -133,6 +119,14 @@ class CBIS_Dataloader:
                                   (abn_targets[:, 0] - (patch_size // 2) > 0) &
                                   (abn_targets[:, 1] + (patch_size // 2) < roi_f.shape[1]) &
                                   (abn_targets[:, 1] - (patch_size // 2) > 0)]
+
+        if hard_center:
+            upleft_x, upleft_y, rw, rh = self.get_cont(np.array(roi_image))
+            abn_targets = abn_targets[(abn_targets[:, 0] < upleft_y + rh) &
+                                      (abn_targets[:, 0] > upleft_y) &
+                                      (abn_targets[:, 1] < upleft_x + rw) &
+                                      (abn_targets[:, 1] > upleft_x)]
+
         if len(abn_targets) < 1: return []  # TODO make sure no funny buisness
         abn_targets = abn_targets[rng.choice(len(abn_targets), nb_abn)]
 
