@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from utils import get_time, gen_plot, separate_bn_paras
 from PIL import Image
 from torchvision import transforms as trans
-from CBIS_dataloader import CBIS_Dataloader, CBIS_PatchDataSet, CBIS_PatchDataSet_INMEM
+from CBIS_dataloader import CBIS_Dataloader, CBIS_PatchDataSet_INMEM
 from torch.utils.data import DataLoader
 from torch.utils.data import RandomSampler
 from sklearn.metrics import roc_curve
@@ -169,6 +169,12 @@ class PatchLearner(object):
         return acc, roc_curve_tensor
 
     def pretrain(self, conf):
+        for model_num in range(conf.n_models):
+            self.models[model_num].train()
+            #if not conf.cpu_mode:
+            #    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0, 1, 2, 3])
+            self.models[model_num].to(conf.device)
+
         # Stage 1: train only the last dense layer if using pretrained model.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
@@ -180,15 +186,6 @@ class PatchLearner(object):
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][1])
-        """
-        # # adjust weight decay and dropout rate for those BN heavy models.
-        # if net == 'xception' or net == 'inception' or net == 'resnet50':
-        dense_layer = org_model.layers[-1]
-        dropout_layer = org_model.layers[-2]
-        dense_layer.kernel_regularizer.l2 = weight_decay2
-        dropout_layer.rate = hidden_dropout2
-        """
-        #self.get_opt(conf)
         self.schedule_lr()
         self.train(conf, 10)
 
@@ -196,16 +193,25 @@ class PatchLearner(object):
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = True
-        #self.get_opt(conf)
         self.schedule_lr()
         self.train(conf, 50)
 
+        """
+                # # adjust weight decay and dropout rate for those BN heavy models.
+                # if net == 'xception' or net == 'inception' or net == 'resnet50':
+                dense_layer = org_model.layers[-1]
+                dropout_layer = org_model.layers[-2]
+                dense_layer.kernel_regularizer.l2 = weight_decay2
+                dropout_layer.rate = hidden_dropout2
+                """
+
     def train(self, conf, epochs):
-        for model_num in range(conf.n_models):
-            self.models[model_num].train()
-            if not conf.cpu_mode:
-                self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0, 1, 2, 3])
-            self.models[model_num].to(conf.device)
+        if not conf.pre_train:
+            for model_num in range(conf.n_models):
+                self.models[model_num].train()
+                #if not conf.cpu_mode:
+                #    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0, 1, 2, 3])
+                self.models[model_num].to(conf.device)
 
         running_loss = 0.
         running_pearson_loss = 0.
@@ -292,7 +298,8 @@ class PatchLearner(object):
             if e % self.save_every == 0 and e != 0:
                 self.save_state(conf, accuracy)
 
-        self.save_state(conf, accuracy, to_save_folder=True, extra='final')
+        if accuracy is not None:
+            self.save_state(conf, accuracy, to_save_folder=True, extra='final')
 
     def schedule_lr(self):
         for params in self.optimizer.param_groups:
@@ -347,7 +354,7 @@ class PatchLearnerMult(object):
             'batch_size': conf.batch_size,
             'pin_memory': True,
             'num_workers': conf.num_workers,
-            'drop_last': True,
+            'drop_last': False,
         }
 
         train_weights = pd.Series(self.train_ds.label_arr).value_counts()
@@ -360,14 +367,17 @@ class PatchLearnerMult(object):
         self.test_loader = DataLoader(self.test_ds,
                                       sampler=WeightedRandomSampler(test_weights, len(test_weights)), **dloader_args)
 
-        #eval_train_sampler = RandomSampler(self.train_ds, replacement=True, num_samples=len(self.train_ds) // 10)
-        #eval_test_sampler = RandomSampler(self.test_ds, replacement=True, num_samples=len(self.test_ds) // 2)
-        #self.eval_train = DataLoader(self.train_ds, sampler=eval_train_sampler, **dloader_args)
-        #self.eval_test = DataLoader(self.test_ds, sampler=eval_test_sampler, **dloader_args)
         self.eval_train = DataLoader(self.train_ds,
                                        sampler=WeightedRandomSampler(train_weights, len(train_weights) // 10), **dloader_args)
         self.eval_test = DataLoader(self.test_ds,
                                       sampler=WeightedRandomSampler(test_weights, len(test_weights) // 2), **dloader_args)
+
+        """
+        #eval_train_sampler = RandomSampler(self.train_ds, replacement=True, num_samples=len(self.train_ds) // 10)
+        #eval_test_sampler = RandomSampler(self.test_ds, replacement=True, num_samples=len(self.test_ds) // 2)
+        #self.eval_train = DataLoader(self.train_ds, sampler=eval_train_sampler, **dloader_args)
+        #self.eval_test = DataLoader(self.test_ds, sampler=eval_test_sampler, **dloader_args)
+        """
 
         print('optimizers generated')
         self.board_loss_every = max(len(self.train_loader) // 4, 1)
@@ -472,6 +482,12 @@ class PatchLearnerMult(object):
         return acc, roc_curve_tensor
 
     def pretrain(self, conf):
+        for model_num in range(conf.n_models):
+            self.models[model_num].train()
+            #if not conf.cpu_mode:
+            #    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
+            self.models[model_num].to(conf.device)
+
         # Stage 1: train only the last dense layer if using pretrained model.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
@@ -483,6 +499,16 @@ class PatchLearnerMult(object):
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][1])
+        self.schedule_lr()
+        self.train(conf, 10)
+
+        # Stage 3: train all layers.
+        for model_num in range(conf.n_models):
+            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
+                param.requires_grad = True
+        self.schedule_lr()
+        self.train(conf, 50)
+
         """
         # # adjust weight decay and dropout rate for those BN heavy models.
         # if net == 'xception' or net == 'inception' or net == 'resnet50':
@@ -491,25 +517,14 @@ class PatchLearnerMult(object):
         dense_layer.kernel_regularizer.l2 = weight_decay2
         dropout_layer.rate = hidden_dropout2
         """
-        #self.get_opt(conf)
-        self.schedule_lr()
-        self.train(conf, 10)
-
-        # Stage 3: train all layers.
-        for model_num in range(conf.n_models):
-            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
-                param.requires_grad = True
-        #self.get_opt(conf)
-        self.schedule_lr()
-        self.train(conf, 50)
 
     def train(self, conf, epochs):
-        for model_num in range(conf.n_models):
-            self.models[model_num].train()
-            if not conf.cpu_mode:
-                self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
-                #self.models[model_num] = torch.nn.parallel.DistributedDataParallel(self.models[model_num], device_ids=[conf.local_rank], output_device=conf.local_rank)
-            self.models[model_num].to(conf.device)
+        if not conf.pre_train:
+            for model_num in range(conf.n_models):
+                self.models[model_num].train()
+                if not conf.cpu_mode:
+                    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
+                self.models[model_num].to(conf.device)
 
         running_loss = 0.
         running_pearson_loss = 0.
