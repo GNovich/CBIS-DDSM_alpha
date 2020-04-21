@@ -156,7 +156,7 @@ class PatchLearner(object):
                 labels.append(label.detach().cpu().numpy())
 
         predictions = np.hstack(predictions)
-        prob = np.hstack(prob)
+        prob = np.vstack(prob)
         labels = np.hstack(labels)
 
         # Compute ROC curve and ROC area for each class
@@ -180,7 +180,7 @@ class PatchLearner(object):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][0])
         self.get_opt(conf)
-        self.train(conf, 3)
+        self.train(conf, 32)
 
         # Stage 2: train only the top layers.
         for model_num in range(conf.n_models):
@@ -469,7 +469,7 @@ class PatchLearnerMult(object):
                 labels.append(torch.cat(label).detach().cpu().numpy())
 
         predictions = np.hstack(predictions)
-        prob = np.hstack(prob)
+        prob = np.vstack(prob)
         labels = np.hstack(labels)
 
         # Compute ROC curve and ROC area for each class
@@ -553,6 +553,9 @@ class PatchLearnerMult(object):
                     thetas.append(theta)
                     joint_losses.append(conf.ce_loss(theta, labels))
                 joint_losses = sum(joint_losses) / max(len(joint_losses), 1)
+
+                if self.step == 70:
+                    pass
 
                 # calc loss
                 if conf.pearson:
@@ -669,7 +672,7 @@ class PatchLearnerMultDist(object):
             'batch_size': conf.batch_size,
             'pin_memory': True,
             'num_workers': conf.num_workers,
-            'drop_last': True,
+            'drop_last': False,
         }
 
         self.train_loader = DataLoader(self.train_ds, sampler=self.train_sampler, **dloader_args)
@@ -754,7 +757,7 @@ class PatchLearnerMultDist(object):
                 labels.append(torch.cat(label).detach().cpu().numpy())
 
         predictions = np.hstack(predictions)
-        prob = np.hstack(prob)
+        prob = np.vstack(prob)
         labels = np.hstack(labels)
 
         # Compute ROC curve and ROC area for each class
