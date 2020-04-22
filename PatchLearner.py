@@ -180,21 +180,21 @@ class PatchLearner(object):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][0])
         self.get_opt(conf)
-        self.train(conf, 32)
+        self.train(conf, conf.pre_steps[0])
 
         # Stage 2: train only the top layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][1])
         self.schedule_lr()
-        self.train(conf, 10)
+        self.train(conf, conf.pre_steps[1])
 
         # Stage 3: train all layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = True
         self.schedule_lr()
-        self.train(conf, 50)
+        self.train(conf, conf.pre_steps[2])
 
         """
                 # # adjust weight decay and dropout rate for those BN heavy models.
@@ -487,21 +487,21 @@ class PatchLearnerMult(object):
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][0]) or ('bn' in name)
-        self.train(conf, 3)
+        self.train(conf, conf.pre_steps[0])
 
         # Stage 2: train only the top layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][1]) or ('bn' in name)
         #self.schedule_lr()
-        self.train(conf, 10)
+        self.train(conf, conf.pre_steps[1])
 
         # Stage 3: train all layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = True
         #self.schedule_lr()
-        self.train(conf, 50)
+        self.train(conf, conf.pre_steps[2])
 
         """
         # # adjust weight decay and dropout rate for those BN heavy models.
