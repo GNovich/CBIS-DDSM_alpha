@@ -10,7 +10,6 @@ import torch
 import pandas as pd
 import numpy as np
 import tqdm
-from random
 
 class CBIS_Dataloader:
     """
@@ -94,7 +93,7 @@ class CBIS_Dataloader:
         rx, ry, rw, rh = cv2.boundingRect(contours[idx])
         return rx, ry, rw, rh
 
-        def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1, nb_abn=10, nb_bkg=10, hard_center=True):
+    def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1, nb_abn=10, nb_bkg=10, hard_center=True):
 
         patch_size = self.patch_size
         rng = np.random.RandomState(self.seed)
