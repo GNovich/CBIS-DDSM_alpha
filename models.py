@@ -3,7 +3,7 @@ from torch.nn import Conv2d, Linear, Sequential, Softmax
 from string import digits
 import torch
 
-three_step_params = {'resnet18':[59, 44],
+three_step_params = {'resnet18':[59, 44], # 44
                      'resnet50':[158, 128],
                      'vgg16':[-1, 15],
                      'vgg19':[-1, 17]}

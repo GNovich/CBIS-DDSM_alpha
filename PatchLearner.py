@@ -213,10 +213,9 @@ class PatchLearner(object):
                 #    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0, 1, 2, 3])
                 self.models[model_num].to(conf.device)
 
-        running_loss = 0.
-        running_pearson_loss = 0.
-        running_ensemble_loss = 0.
-        running_morph_loss = 0.
+        self.running_loss = 0.
+        self.running_pearson_loss = 0.
+        self.running_ensemble_loss = 0.
         epoch_iter = range(epochs)
         for e in epoch_iter:
             # check lr update
@@ -245,42 +244,37 @@ class PatchLearner(object):
                 if conf.pearson:
                     outputs = torch.stack(thetas)
                     pearson_corr_models_loss = conf.pearson_loss(outputs, labels)
-                    running_pearson_loss += pearson_corr_models_loss.item()
+                    self.running_pearson_loss += pearson_corr_models_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
                 elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
-                    running_ensemble_loss += ensemble_loss.item()
+                    self.running_ensemble_loss += ensemble_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
                 else:
                     loss = joint_losses
 
                 loss.backward()
-                running_loss += loss.item()
+                self.running_loss += loss.item()
                 self.optimizer.step()
 
                 # listen to running losses
                 if self.step % self.board_loss_every == 0 and self.step != 0:
-                    loss_board = running_loss / self.board_loss_every
+                    loss_board = self.running_loss / self.board_loss_every
                     self.writer.add_scalar('train_loss', loss_board, self.step)
-                    running_loss = 0.
+                    self.running_loss = 0.
 
                     if conf.pearson:  # ganovich listening to pearson
-                        loss_board = running_pearson_loss / self.board_loss_every
+                        loss_board = self.running_pearson_loss / self.board_loss_every
                         self.writer.add_scalar('pearson_loss', loss_board, self.step)
-                        running_pearson_loss = 0.
+                        self.running_pearson_loss = 0.
 
                     if conf.joint_mean:
-                        loss_board = running_ensemble_loss / self.board_loss_every
+                        loss_board = self.running_ensemble_loss / self.board_loss_every
                         self.writer.add_scalar('ensemble_loss', loss_board, self.step)
-                        running_ensemble_loss = 0.
-
-                    if conf.morph_dir:
-                        loss_board = running_morph_loss / self.board_loss_every
-                        self.writer.add_scalar('morph_loss', loss_board, self.step)
-                        running_morph_loss = 0.
+                        self.running_ensemble_loss = 0.
 
                 # listen to validation and save every so often
                 if self.step % (self.loader.train_len//2) == 0 and self.step != 0:
@@ -394,7 +388,7 @@ class PatchLearnerMult(object):
             paras_wo_bn.append(paras_wo_bn_)
 
         self.optimizer = optim.SGD([
-                                       {'params': paras_wo_bn[model_num]}  # , 'weight_decay': 5e-4} #TODO check
+                                       {'params': paras_wo_bn[model_num], 'weight_decay': 5e-4}
                                        for model_num in range(conf.n_models)
                                    ] + [
                                        {'params': paras_only_bn[model_num]}
@@ -484,29 +478,29 @@ class PatchLearnerMult(object):
     def pretrain(self, conf):
         for model_num in range(conf.n_models):
             self.models[model_num].train()
-            #if not conf.cpu_mode:
-            #    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
+            if not conf.cpu_mode:
+                self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
             self.models[model_num].to(conf.device)
 
+        # Do not freeze the bn params
         # Stage 1: train only the last dense layer if using pretrained model.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
-                param.requires_grad = (i > three_step_params[conf.net_mode][0])
-        self.get_opt(conf)
+                param.requires_grad = (i > three_step_params[conf.net_mode][0]) or ('bn' in name)
         self.train(conf, 3)
 
         # Stage 2: train only the top layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
-                param.requires_grad = (i > three_step_params[conf.net_mode][1])
-        self.schedule_lr()
+                param.requires_grad = (i > three_step_params[conf.net_mode][1]) or ('bn' in name)
+        #self.schedule_lr()
         self.train(conf, 10)
 
         # Stage 3: train all layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = True
-        self.schedule_lr()
+        #self.schedule_lr()
         self.train(conf, 50)
 
         """
@@ -526,10 +520,9 @@ class PatchLearnerMult(object):
                     self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
                 self.models[model_num].to(conf.device)
 
-        running_loss = 0.
-        running_pearson_loss = 0.
-        running_ensemble_loss = 0.
-        running_morph_loss = 0.
+        self.running_loss = 0.
+        self.running_pearson_loss = 0.
+        self.running_ensemble_loss = 0.
         epoch_iter = range(epochs)
         accuracy = 0
         for e in epoch_iter:
@@ -561,42 +554,37 @@ class PatchLearnerMult(object):
                 if conf.pearson:
                     outputs = torch.stack(thetas)
                     pearson_corr_models_loss = conf.pearson_loss(outputs, labels)
-                    running_pearson_loss += pearson_corr_models_loss.item()
+                    self.running_pearson_loss += pearson_corr_models_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
                 elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
-                    running_ensemble_loss += ensemble_loss.item()
+                    self.running_ensemble_loss += ensemble_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
                 else:
                     loss = joint_losses
 
                 loss.backward()
-                running_loss += loss.item()
+                self.running_loss += loss.item()
                 self.optimizer.step()
 
                 # listen to running losses
                 if self.step % self.board_loss_every == 0 and self.step != 0:
-                    loss_board = running_loss / self.board_loss_every
+                    loss_board = self.running_loss / self.board_loss_every
                     self.writer.add_scalar('train_loss', loss_board, self.step)
-                    running_loss = 0.
+                    self.running_loss = 0.
 
                     if conf.pearson:  # ganovich listening to pearson
-                        loss_board = running_pearson_loss / self.board_loss_every
+                        loss_board = self.running_pearson_loss / self.board_loss_every
                         self.writer.add_scalar('pearson_loss', loss_board, self.step)
-                        running_pearson_loss = 0.
+                        self.running_pearson_loss = 0.
 
                     if conf.joint_mean:
-                        loss_board = running_ensemble_loss / self.board_loss_every
+                        loss_board = self.running_ensemble_loss / self.board_loss_every
                         self.writer.add_scalar('ensemble_loss', loss_board, self.step)
-                        running_ensemble_loss = 0.
-
-                    if conf.morph_dir:
-                        loss_board = running_morph_loss / self.board_loss_every
-                        self.writer.add_scalar('morph_loss', loss_board, self.step)
-                        running_morph_loss = 0.
+                        self.running_ensemble_loss = 0.
 
                 self.step += 1
 
@@ -786,10 +774,9 @@ class PatchLearnerMultDist(object):
                                                         device_ids=[conf.local_rank], output_device=conf.local_rank)
             self.models[model_num].to(conf.device)
 
-        running_loss = 0.
-        running_pearson_loss = 0.
-        running_ensemble_loss = 0.
-        running_morph_loss = 0.
+        self.running_loss = 0.
+        self.running_pearson_loss = 0.
+        self.running_ensemble_loss = 0.
         epoch_iter = range(epochs)
         for e in epoch_iter:
             # check lr update
@@ -817,42 +804,37 @@ class PatchLearnerMultDist(object):
                 if conf.pearson:
                     outputs = torch.stack(thetas)
                     pearson_corr_models_loss = conf.pearson_loss(outputs, labels)
-                    running_pearson_loss += pearson_corr_models_loss.item()
+                    self.running_pearson_loss += pearson_corr_models_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
                 elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
-                    running_ensemble_loss += ensemble_loss.item()
+                    self.running_ensemble_loss += ensemble_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
                 else:
                     loss = joint_losses
 
                 loss.backward()
-                running_loss += loss.item()
+                self.running_loss += loss.item()
                 self.optimizer.step()
 
                 # listen to running losses
                 if self.step % self.board_loss_every == 0 and self.step != 0:
-                    loss_board = running_loss / self.board_loss_every
+                    loss_board = self.running_loss / self.board_loss_every
                     self.writer.add_scalar('train_loss', loss_board, self.step)
-                    running_loss = 0.
+                    self.running_loss = 0.
 
                     if conf.pearson:  # ganovich listening to pearson
-                        loss_board = running_pearson_loss / self.board_loss_every
+                        loss_board = self.running_pearson_loss / self.board_loss_every
                         self.writer.add_scalar('pearson_loss', loss_board, self.step)
-                        running_pearson_loss = 0.
+                        self.running_pearson_loss = 0.
 
                     if conf.joint_mean:
-                        loss_board = running_ensemble_loss / self.board_loss_every
+                        loss_board = self.running_ensemble_loss / self.board_loss_every
                         self.writer.add_scalar('ensemble_loss', loss_board, self.step)
-                        running_ensemble_loss = 0.
-
-                    if conf.morph_dir:
-                        loss_board = running_morph_loss / self.board_loss_every
-                        self.writer.add_scalar('morph_loss', loss_board, self.step)
-                        running_morph_loss = 0.
+                        self.running_ensemble_loss = 0.
 
                 self.step += 1
 

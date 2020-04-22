@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     parser.add_argument("-n", "--n_models", help="how many duplicate nets to use. 1 leads to basic training, "
                                                  "making -a and -p flags redundant", default=1, type=int)
-    parser.add_argument("-patch", "--n_patch", help="how many patches per image", default=10, type=int)
+    parser.add_argument("-patch", "--n_patch", help="how many patches per image", default=2, type=int)
     parser.add_argument("-bkg", "--bkg_prob", help="how many patches per image", default=.2, type=float)
     parser.add_argument("-mul", "--mul", help="use mult mode?", default=0, type=int)
     parser.add_argument("-rank", "--local_rank", help="rank for mul", default=0, type=int)
@@ -75,7 +75,8 @@ if __name__ == '__main__':
     conf.morph_loss = MSELoss()
 
     # create learner and go
-    conf.log_path = str(conf.log_path) + '_' + '_'.join([str(conf.net_mode), str(conf.lr), str(conf.batch_size), str(conf.n_patch)])
+    conf.log_path = str(conf.log_path) + '_' + '_'.join([
+        str(conf.net_mode), str(conf.lr), str(conf.batch_size), str(conf.n_patch), 'pre' if conf.pre_train else ''])
     learner = PatchLearnerMult(conf) if args.mul else PatchLearner(conf)
     # face_learner(conf) if conf.n_models == 1 else face_learner_corr(conf)
 
