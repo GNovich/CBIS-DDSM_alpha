@@ -35,6 +35,7 @@ class PatchLearner(object):
         self.milestones = conf.milestones
         self.writer = SummaryWriter(logdir=conf.log_path)
         self.step = 0
+        self.epoch = 0
         print('two model heads generated')
 
         self.get_opt(conf)
@@ -190,24 +191,13 @@ class PatchLearner(object):
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][1])
-        self.schedule_lr()
         self.train(conf, conf.pre_steps[1])
 
         # Stage 3: train all layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = True
-        self.schedule_lr()
         self.train(conf, conf.pre_steps[2])
-
-        """
-                # # adjust weight decay and dropout rate for those BN heavy models.
-                # if net == 'xception' or net == 'inception' or net == 'resnet50':
-                dense_layer = org_model.layers[-1]
-                dropout_layer = org_model.layers[-2]
-                dense_layer.kernel_regularizer.l2 = weight_decay2
-                dropout_layer.rate = hidden_dropout2
-                """
 
     def train(self, conf, epochs):
         if not conf.pre_train:
@@ -223,10 +213,9 @@ class PatchLearner(object):
         epoch_iter = range(epochs)
         for e in epoch_iter:
             # check lr update
-            if not conf.pre_train:
-                for milestone in self.milestones:
-                    if e == milestone:
-                        self.schedule_lr()
+            for milestone in self.milestones:
+                if self.epoch == milestone:
+                    self.schedule_lr()
 
             loader = self.loader.get_loader('train')
             # for imgs, labels in self.loader.get_loader('tarin'):
@@ -292,10 +281,11 @@ class PatchLearner(object):
                         accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='train')
                         self.board_val('mod_train_' + str(model_num), accuracy, roc_curve_tensor)
                         self.models[model_num].train()
-
                 self.step += 1
-            if e % self.save_every == 0 and e != 0:
+
+            if self.epoch % self.save_every == 0 and self.epoch != 0:
                 self.save_state(conf, accuracy)
+            self.epoch += 1
 
         if accuracy is not None:
             self.save_state(conf, accuracy, to_save_folder=True, extra='final')
@@ -322,6 +312,7 @@ class PatchLearnerMult(object):
             os.mkdir(conf.log_path)
         self.writer = SummaryWriter(logdir=conf.log_path)
         self.step = 0
+        self.epoch = 0
         print('two model heads generated')
 
         self.get_opt(conf)
@@ -486,14 +477,12 @@ class PatchLearnerMult(object):
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][1]) or ('bn' in name)
-        self.schedule_lr()
         self.train(conf, conf.pre_steps[1])
 
         # Stage 3: train all layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = True
-        self.schedule_lr()
         self.train(conf, conf.pre_steps[2])
 
     def train(self, conf, epochs):
@@ -512,10 +501,9 @@ class PatchLearnerMult(object):
         accuracy = 0
         for e in epoch_iter:
             # check lr update
-            if not conf.pre_train:
-                for milestone in self.milestones:
-                    if e == milestone:
-                        self.schedule_lr()
+            for milestone in self.milestones:
+                if self.epoch == milestone:
+                    self.schedule_lr()
 
             # train
             for imgs, labels in tqdm(self.train_loader, desc='epoch {}'.format(e), total=len(self.train_loader), position=0):
@@ -575,19 +563,20 @@ class PatchLearnerMult(object):
                 self.step += 1
 
             # listen to validation and save every so often
-            if e % self.evaluate_every == 0 and e != 0:
+            if self.epoch % self.evaluate_every == 0 and self.epoch != 0:
                 for model_num in range(conf.n_models):
                     accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='test')
                     self.board_val('mod_test_' + str(model_num), accuracy, roc_curve_tensor)
                     self.models[model_num].train()
-            if e % self.evaluate_every == 0 and e != 0:
+            if self.epoch % self.evaluate_every == 0 and self.epoch != 0:
                 for model_num in range(conf.n_models):
                     accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='train')
                     self.board_val('mod_train_' + str(model_num), accuracy, roc_curve_tensor)
                     self.models[model_num].train()
 
-            if e % self.save_every == 0 and e != 0:
+            if self.epoch % self.save_every == 0 and self.epoch != 0:
                 self.save_state(conf, accuracy)
+            self.epoch += 1
 
         if accuracy is not None:
             self.save_state(conf, accuracy, to_save_folder=True, extra='final')
@@ -615,6 +604,7 @@ class PatchLearnerMultDist(object):
         os.mkdir(conf.log_path / str(conf.local_rank))
         self.writer = SummaryWriter(logdir=conf.log_path / str(conf.local_rank))
         self.step = 0
+        self.epoch = 0
         print('two model heads generated')
 
         paras_only_bn = []
@@ -767,7 +757,7 @@ class PatchLearnerMultDist(object):
         for e in epoch_iter:
             # check lr update
             for milestone in self.milestones:
-                if e == milestone:
+                if self.epoch == milestone:
                     self.schedule_lr()
 
             # train
@@ -825,19 +815,20 @@ class PatchLearnerMultDist(object):
                 self.step += 1
 
             # listen to validation and save every so often
-            if e % self.evaluate_every == 0 and e != 0:
+            if self.epoch % self.evaluate_every == 0 and self.epoch != 0:
                 for model_num in range(conf.n_models):
                     accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='test')
                     self.board_val('mod_test_' + str(model_num), accuracy, roc_curve_tensor)
                     self.models[model_num].train()
-            if e % self.evaluate_every == 0 and e != 0:
+            if self.epoch % self.evaluate_every == 0 and self.epoch != 0:
                 for model_num in range(conf.n_models):
                     accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='train')
                     self.board_val('mod_train_' + str(model_num), accuracy, roc_curve_tensor)
                     self.models[model_num].train()
 
-            if e % self.save_every == 0 and e != 0:
+            if self.epoch % self.save_every == 0 and self.epoch != 0:
                 self.save_state(conf, accuracy)
+            self.epoch += 1
 
         self.save_state(conf, accuracy, to_save_folder=True, extra='final')
 
