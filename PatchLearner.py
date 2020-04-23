@@ -66,6 +66,10 @@ class PatchLearner(object):
                                       og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=.5)
 
         print('optimizers generated')
+        self.running_loss = 0.
+        self.running_pearson_loss = 0.
+        self.running_ensemble_loss = 0.
+
         self.board_loss_every = max(self.loader.train_len // 10, 1)
         self.evaluate_every = conf.evaluate_every
         self.save_every = max(conf.epoch_per_save, 1)
@@ -213,9 +217,9 @@ class PatchLearner(object):
                 #    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0, 1, 2, 3])
                 self.models[model_num].to(conf.device)
 
-        self.running_loss = 0.
-        self.running_pearson_loss = 0.
-        self.running_ensemble_loss = 0.
+            self.running_loss = 0.
+            self.running_pearson_loss = 0.
+            self.running_ensemble_loss = 0.
         epoch_iter = range(epochs)
         for e in epoch_iter:
             # check lr update
@@ -357,6 +361,10 @@ class PatchLearnerMult(object):
         """
 
         print('optimizers generated')
+        self.running_loss = 0.
+        self.running_pearson_loss = 0.
+        self.running_ensemble_loss = 0.
+
         self.board_loss_every = max(len(self.train_loader) // 4, 1)
         self.evaluate_every = conf.evaluate_every
         self.save_every = max(conf.epoch_per_save, 1)
@@ -477,14 +485,14 @@ class PatchLearnerMult(object):
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][1]) or ('bn' in name)
-        #self.schedule_lr()
+        self.schedule_lr()
         self.train(conf, conf.pre_steps[1])
 
         # Stage 3: train all layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = True
-        #self.schedule_lr()
+        self.schedule_lr()
         self.train(conf, conf.pre_steps[2])
 
     def train(self, conf, epochs):
@@ -496,9 +504,9 @@ class PatchLearnerMult(object):
                     self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=device_ids)
                 self.models[model_num].to(conf.device)
 
-        self.running_loss = 0.
-        self.running_pearson_loss = 0.
-        self.running_ensemble_loss = 0.
+            self.running_loss = 0.
+            self.running_pearson_loss = 0.
+            self.running_ensemble_loss = 0.
         epoch_iter = range(epochs)
         accuracy = 0
         for e in epoch_iter:

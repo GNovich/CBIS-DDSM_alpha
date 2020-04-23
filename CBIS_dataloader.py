@@ -10,6 +10,10 @@ import torch
 import pandas as pd
 import numpy as np
 import tqdm
+from functools import lru_cache
+from threading import RLock
+from cachetools import cached, TTLCache
+
 
 class CBIS_Dataloader:
     """
@@ -323,7 +327,8 @@ class CBIS_PatchDataSet_INMEM(Dataset):
         rx, ry, rw, rh = cv2.boundingRect(contours[idx])
         return rx, ry, rw, rh
 
-    def sample_patches(self, img, roi_image, pos_cutoff=.9, neg_cutoff=.1, hard_center=True):
+    def sample_patches(self, index, pos_cutoff=.9, neg_cutoff=.1, hard_center=True):
+        img, roi_image = self.mam_im[index], self.roi_im[index]
         patch_size = self.patch_size
         rng = np.random.RandomState(self.seed or None)
         roi_f = (np.array(roi_image) > 0).astype(float)
@@ -381,7 +386,7 @@ class CBIS_PatchDataSet_INMEM(Dataset):
 
     def __getitem__(self, index):
         # Open image
-        patches, nb_abn, nb_bkg = self.sample_patches(self.mam_im[index], self.roi_im[index])
+        patches, nb_abn, nb_bkg = self.sample_patches(index)
         # Get label(class) of the image based on the cropped pandas column
         single_image_label = ([self.label_arr[index]] * nb_abn) + ([0] * nb_bkg)
 
