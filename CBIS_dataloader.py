@@ -10,9 +10,6 @@ import torch
 import pandas as pd
 import numpy as np
 import tqdm
-from functools import lru_cache
-from threading import RLock
-from cachetools import cached, TTLCache
 
 
 class CBIS_Dataloader:
