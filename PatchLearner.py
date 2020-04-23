@@ -223,9 +223,10 @@ class PatchLearner(object):
         epoch_iter = range(epochs)
         for e in epoch_iter:
             # check lr update
-            for milestone in self.milestones:
-                if e == milestone:
-                    self.schedule_lr()
+            if not conf.pre_train:
+                for milestone in self.milestones:
+                    if e == milestone:
+                        self.schedule_lr()
 
             loader = self.loader.get_loader('train')
             # for imgs, labels in self.loader.get_loader('tarin'):
@@ -511,9 +512,10 @@ class PatchLearnerMult(object):
         accuracy = 0
         for e in epoch_iter:
             # check lr update
-            for milestone in self.milestones:
-                if e == milestone:
-                    self.schedule_lr()
+            if not conf.pre_train:
+                for milestone in self.milestones:
+                    if e == milestone:
+                        self.schedule_lr()
 
             # train
             for imgs, labels in tqdm(self.train_loader, desc='epoch {}'.format(e), total=len(self.train_loader), position=0):
