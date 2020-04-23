@@ -320,23 +320,6 @@ class PatchLearnerMult(object):
         print('two model heads generated')
 
         self.get_opt(conf)
-        """
-        paras_only_bn = []
-        paras_wo_bn = []
-        for model in self.models:
-            paras_only_bn_, paras_wo_bn_ = separate_bn_paras(model)
-            paras_only_bn.append(paras_only_bn_)
-            paras_wo_bn.append(paras_wo_bn_)
-
-        self.optimizer = optim.SGD([
-                                       {'params': paras_wo_bn[model_num],
-                                        'weight_decay': 5e-4}
-                                       for model_num in range(conf.n_models)
-                                   ] + [
-                                       {'params': paras_only_bn[model_num]}
-                                       for model_num in range(conf.n_models)
-                                   ], lr=conf.lr, momentum=conf.momentum)
-        """
         print(self.optimizer)
 
         # ------------  define loaders -------------- #
@@ -479,7 +462,8 @@ class PatchLearnerMult(object):
         for model_num in range(conf.n_models):
             self.models[model_num].train()
             if not conf.cpu_mode:
-                self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
+                device_ids = list(range(conf.ngpu))
+                self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=device_ids)
             self.models[model_num].to(conf.device)
 
         # Do not freeze the bn params
@@ -503,21 +487,13 @@ class PatchLearnerMult(object):
         #self.schedule_lr()
         self.train(conf, conf.pre_steps[2])
 
-        """
-        # # adjust weight decay and dropout rate for those BN heavy models.
-        # if net == 'xception' or net == 'inception' or net == 'resnet50':
-        dense_layer = org_model.layers[-1]
-        dropout_layer = org_model.layers[-2]
-        dense_layer.kernel_regularizer.l2 = weight_decay2
-        dropout_layer.rate = hidden_dropout2
-        """
-
     def train(self, conf, epochs):
         if not conf.pre_train:
             for model_num in range(conf.n_models):
                 self.models[model_num].train()
                 if not conf.cpu_mode:
-                    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
+                    device_ids = list(range(conf.ngpu))
+                    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=device_ids)
                 self.models[model_num].to(conf.device)
 
         self.running_loss = 0.
