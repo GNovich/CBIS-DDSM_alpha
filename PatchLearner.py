@@ -66,6 +66,10 @@ class PatchLearner(object):
                                       og_resize=(1152, 896), patch_size=225, roi_sampling_ratio=.5)
 
         print('optimizers generated')
+        self.running_loss = 0.
+        self.running_pearson_loss = 0.
+        self.running_ensemble_loss = 0.
+
         self.board_loss_every = max(self.loader.train_len // 10, 1)
         self.evaluate_every = conf.evaluate_every
         self.save_every = max(conf.epoch_per_save, 1)
@@ -213,9 +217,9 @@ class PatchLearner(object):
                 #    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0, 1, 2, 3])
                 self.models[model_num].to(conf.device)
 
-        self.running_loss = 0.
-        self.running_pearson_loss = 0.
-        self.running_ensemble_loss = 0.
+            self.running_loss = 0.
+            self.running_pearson_loss = 0.
+            self.running_ensemble_loss = 0.
         epoch_iter = range(epochs)
         for e in epoch_iter:
             # check lr update
@@ -320,23 +324,6 @@ class PatchLearnerMult(object):
         print('two model heads generated')
 
         self.get_opt(conf)
-        """
-        paras_only_bn = []
-        paras_wo_bn = []
-        for model in self.models:
-            paras_only_bn_, paras_wo_bn_ = separate_bn_paras(model)
-            paras_only_bn.append(paras_only_bn_)
-            paras_wo_bn.append(paras_wo_bn_)
-
-        self.optimizer = optim.SGD([
-                                       {'params': paras_wo_bn[model_num],
-                                        'weight_decay': 5e-4}
-                                       for model_num in range(conf.n_models)
-                                   ] + [
-                                       {'params': paras_only_bn[model_num]}
-                                       for model_num in range(conf.n_models)
-                                   ], lr=conf.lr, momentum=conf.momentum)
-        """
         print(self.optimizer)
 
         # ------------  define loaders -------------- #
@@ -374,6 +361,10 @@ class PatchLearnerMult(object):
         """
 
         print('optimizers generated')
+        self.running_loss = 0.
+        self.running_pearson_loss = 0.
+        self.running_ensemble_loss = 0.
+
         self.board_loss_every = max(len(self.train_loader) // 4, 1)
         self.evaluate_every = conf.evaluate_every
         self.save_every = max(conf.epoch_per_save, 1)
@@ -479,7 +470,8 @@ class PatchLearnerMult(object):
         for model_num in range(conf.n_models):
             self.models[model_num].train()
             if not conf.cpu_mode:
-                self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
+                device_ids = list(range(conf.ngpu))
+                self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=device_ids)
             self.models[model_num].to(conf.device)
 
         # Do not freeze the bn params
@@ -493,36 +485,28 @@ class PatchLearnerMult(object):
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = (i > three_step_params[conf.net_mode][1]) or ('bn' in name)
-        #self.schedule_lr()
+        self.schedule_lr()
         self.train(conf, conf.pre_steps[1])
 
         # Stage 3: train all layers.
         for model_num in range(conf.n_models):
             for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                 param.requires_grad = True
-        #self.schedule_lr()
+        self.schedule_lr()
         self.train(conf, conf.pre_steps[2])
-
-        """
-        # # adjust weight decay and dropout rate for those BN heavy models.
-        # if net == 'xception' or net == 'inception' or net == 'resnet50':
-        dense_layer = org_model.layers[-1]
-        dropout_layer = org_model.layers[-2]
-        dense_layer.kernel_regularizer.l2 = weight_decay2
-        dropout_layer.rate = hidden_dropout2
-        """
 
     def train(self, conf, epochs):
         if not conf.pre_train:
             for model_num in range(conf.n_models):
                 self.models[model_num].train()
                 if not conf.cpu_mode:
-                    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0])  # , 1, 2, 3
+                    device_ids = list(range(conf.ngpu))
+                    self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=device_ids)
                 self.models[model_num].to(conf.device)
 
-        self.running_loss = 0.
-        self.running_pearson_loss = 0.
-        self.running_ensemble_loss = 0.
+            self.running_loss = 0.
+            self.running_pearson_loss = 0.
+            self.running_ensemble_loss = 0.
         epoch_iter = range(epochs)
         accuracy = 0
         for e in epoch_iter:

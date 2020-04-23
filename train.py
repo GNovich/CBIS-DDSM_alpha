@@ -25,6 +25,7 @@ if __name__ == '__main__':
     parser.add_argument("-rank", "--local_rank", help="rank for mul", default=0, type=int)
     parser.add_argument("-pre", "--pre_train", help="use a pretrain net?", default=0, type=int)
     parser.add_argument("-pre_step", "--pre_steps", help="what steps to use?", default=[3, 10, 37], type=int, nargs='*')
+    parser.add_argument("-ngpu", "--ngpu", help="how many gpu's to use?", default=1, type=int)
 
     # TODO maybe add option to specify a network mix instead of duplicates
     parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[], type=float, nargs='*')
@@ -42,6 +43,7 @@ if __name__ == '__main__':
     conf = get_config()
 
     # training param
+    conf.ngpu = args.ngpu
     conf.pre_steps = args.pre_steps
     conf.pre_train = args.pre_train
     conf.local_rank = args.local_rank
