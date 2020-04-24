@@ -61,7 +61,8 @@ class PreBuildConverter:
 
         model.features[0] = Conv2d(self.in_channels, conv.out_channels,
                                    kernel_size=conv.kernel_size, stride=conv.stride,
-                                   padding=conv.padding, bias=conv.bias)
+                                   padding=conv.padding)
+        model.features[0].bias.data = conv.bias
         model.features[0].weight.data = conv.weight.mean(1).unsqueeze(1)  # inherit og 1st layer weights
         model.classifier[-1] = Linear(in_features=classifier.in_features,
                                       out_features=self.out_classes, bias=True)
