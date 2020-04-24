@@ -5,7 +5,7 @@ import torch
 
 three_step_params = {'resnet18':[59, 44], # 44
                      'resnet50':[158, 128],
-                     'vgg16':[-1, 15],
+                     'vgg16':[25, 13],
                      'vgg19':[-1, 17]}
 
 def convert_syncbn_model(module, process_group=None):
