@@ -3,10 +3,10 @@ from torch.nn import Conv2d, Linear, Sequential, Softmax
 from string import digits
 import torch
 
-three_step_params = {'resnet18':[59, 44], # 44
-                     'resnet50':[158, 128],
-                     'vgg16':[25, 13],
-                     'vgg19':[-1, 17]}
+three_step_params = {'resnet18':[59, 44, -1],
+                     'resnet50':[158, 128, -1],
+                     'vgg16':[25, 13, -1],
+                     'vgg19':[31, 23, 15, -1]}
 
 def convert_syncbn_model(module, process_group=None):
     '''

@@ -466,24 +466,13 @@ class PatchLearnerMult(object):
                 self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=device_ids)
             self.models[model_num].to(conf.device)
 
-        # Do not freeze the bn params
-        # Stage 1: train only the last dense layer if using pretrained model.
-        for model_num in range(conf.n_models):
-            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
-                param.requires_grad = (i > three_step_params[conf.net_mode][0]) or ('bn' in name)
-        self.train(conf, conf.pre_steps[0])
-
-        # Stage 2: train only the top layers.
-        for model_num in range(conf.n_models):
-            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
-                param.requires_grad = (i > three_step_params[conf.net_mode][1]) or ('bn' in name)
-        self.train(conf, conf.pre_steps[1])
-
-        # Stage 3: train all layers.
-        for model_num in range(conf.n_models):
-            for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
-                param.requires_grad = True
-        self.train(conf, conf.pre_steps[2])
+        pre_layers = three_step_params[conf.net_mode] if len(conf.pre_layers) < 1 else conf.pre_layers
+        assert len(pre_layers) == len(conf.pre_steps)
+        for layer_step, layer_epoch in zip(pre_layers, conf.pre_steps):
+            for model_num in range(conf.n_models):
+                for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
+                    param.requires_grad = (i > layer_step) or ('bn' in name)
+            self.train(conf, layer_epoch)
 
     def train(self, conf, epochs):
         if not conf.pre_train:
