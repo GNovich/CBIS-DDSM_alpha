@@ -27,6 +27,8 @@ if __name__ == '__main__':
     parser.add_argument("-pre_layers", "--pre_layers", help="layer steps to use?", default=[], type=int, nargs='*')
     parser.add_argument("-pre_step", "--pre_steps", help="what steps to use?", default=[3, 10, 37], type=int, nargs='*')
     parser.add_argument("-ngpu", "--ngpu", help="how many gpu's to use?", default=1, type=int)
+    parser.add_argument("-half", "--half", help="use half precisions?", default=0, type=int)
+    parser.add_argument("-no_bkg", "--no_bkg", help="4 class mode", default=0, type=int)
 
     # TODO maybe add option to specify a network mix instead of duplicates
     parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[], type=float, nargs='*')
@@ -38,19 +40,21 @@ if __name__ == '__main__':
     parser.add_argument("-morph_dir", "--morph_dir", help="use a morph directory", default='', type=str)
     parser.add_argument("-morph_a", "--morph_alpha", help="balance parameter", default=10., type=float)
 
-    parser.add_argument("-c", "--cpu_mode", help="force cpu mode", default=False, type=bool)
+    parser.add_argument("-c", "--cpu_mode", help="force cpu mode", default=0, type=int)
 
     args = parser.parse_args()
     conf = get_config()
 
     # training param
+    conf.no_bkg = args.no_bkg
+    conf.half = args.half
     conf.ngpu = args.ngpu
     conf.pre_layers = args.pre_layers
     conf.pre_steps = args.pre_steps
     conf.pre_train = args.pre_train
     conf.local_rank = args.local_rank
     conf.n_patch = args.n_patch
-    conf.bkg_prob = args.bkg_prob
+    conf.bkg_prob = args.bkg_prob if not args.no_bkg else 0
     conf.net_mode = args.net_mode
     conf.evaluate_every = 3  # TODO see if relevant
     conf.epoch_per_save = args.epoch_per_save
@@ -82,7 +86,9 @@ if __name__ == '__main__':
 
     # create learner and go
     conf.log_path = str(conf.log_path) + '_' + '_'.join([
-        str(conf.net_mode), str(conf.lr), str(conf.batch_size), str(conf.n_patch), 'pre' if conf.pre_train else ''])
+        str(conf.net_mode), 'lr='+str(conf.lr), 'm='+'_'.join([str(m) for m in conf.milestones]),
+        ('a='+str(conf.alpha) if conf.n_models>1 else ''),
+        str(conf.batch_size), str(conf.n_patch), 'pre' if conf.pre_train else ''])
     learner = PatchLearnerMult(conf) if args.mul else PatchLearner(conf)
     # face_learner(conf) if conf.n_models == 1 else face_learner_corr(conf)
 

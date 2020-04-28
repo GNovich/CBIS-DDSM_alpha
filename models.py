@@ -1,10 +1,10 @@
 from torchvision import models
-from torch.nn import Conv2d, Linear, Sequential, Softmax
+from torch.nn import Conv2d, Linear, Sequential, Softmax, BatchNorm2d
 from string import digits
 import torch
 
-three_step_params = {'resnet18':[59, 44, -1],
-                     'resnet50':[158, 128, -1],
+three_step_params = {'resnet18':[59, 44, -1], # 29, 14, 2
+                     'resnet50':[158, 128, -1], # 71, 32, 2
                      'vgg16':[25, 13, -1],
                      'vgg19':[31, 23, 15, -1]}
 
@@ -35,24 +35,32 @@ def convert_syncbn_model(module, process_group=None):
     return mod
 
 class PreBuildConverter:
-    def __init__(self, in_channels, out_classes, add_soft_max=True, pretrained=False):
+    def __init__(self, in_channels, out_classes, add_soft_max=True, pretrained=False, half=False):
         self.in_channels = in_channels
         self.out_classes = out_classes
         self.soft_max = add_soft_max
         self.pretrained = pretrained
+        self.half = half
 
     def get_by_str(self, name):
         name_clean = name.translate(str.maketrans('', '', digits)).lower()
+        ret_model = None
         if 'vgg' in name_clean:
-            return self.VGG(name)
+            ret_model = self.VGG(name)
         if 'dense' in name_clean:
-            return self.DenseNet(name)
+            ret_model = self.DenseNet(name)
         if 'mobilenet' in name_clean:
-            return self.MobileNet()
+            ret_model = self.MobileNet()
         if 'resnet' in name_clean:
-            return self.ResNet(name)
+            ret_model = self.ResNet(name)
         if 'lenet' in name_clean:
-            return self.LeNet(name)
+            ret_model = self.LeNet(name)
+        if self.half:
+            ret_model.half()  # convert to half precision
+            for layer in ret_model.modules():
+                if isinstance(layer, BatchNorm2d):
+                    layer.float()
+        return ret_model
 
     def VGG(self, name='vgg16'):
         model = getattr(models, name)(pretrained=self.pretrained)
