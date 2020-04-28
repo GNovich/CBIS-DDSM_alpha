@@ -1,4 +1,5 @@
 import torch
+import warnings
 from torch import optim
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
@@ -19,7 +20,6 @@ import os
 import pandas as pd
 from models import three_step_params
 plt.switch_backend('agg')
-
 
 class PatchLearner(object):
     def __init__(self, conf):
@@ -300,7 +300,8 @@ class PatchLearnerMult(object):
     def __init__(self, conf):
 
         # -----------   define model --------------- #
-        build_model = PreBuildConverter(in_channels=1, out_classes=5, add_soft_max=True, pretrained=conf.pre_train)
+        build_model = PreBuildConverter(in_channels=1, out_classes=5 if not conf.no_bkg else 4, add_soft_max=True,
+                                        pretrained=conf.pre_train, half=conf.half)
         self.models = []
         for _ in range(conf.n_models):
             self.models.append(build_model.get_by_str(conf.net_mode).to(conf.device))
@@ -320,8 +321,10 @@ class PatchLearnerMult(object):
 
         # ------------  define loaders -------------- #
 
-        self.train_ds = CBIS_PatchDataSet_INMEM(mode='train', patch_num=conf.n_patch, prob_bkg=conf.bkg_prob)
-        self.test_ds = CBIS_PatchDataSet_INMEM(mode='test', patch_num=conf.n_patch, prob_bkg=conf.bkg_prob)
+        self.train_ds = CBIS_PatchDataSet_INMEM(mode='train', patch_num=conf.n_patch,
+                                                prob_bkg=conf.bkg_prob, no_bkg=conf.no_bkg)
+        self.test_ds = CBIS_PatchDataSet_INMEM(mode='test', patch_num=conf.n_patch,
+                                               prob_bkg=conf.bkg_prob, no_bkg=conf.no_bkg)
 
         dloader_args = {
             'batch_size': conf.batch_size,
@@ -422,23 +425,71 @@ class PatchLearnerMult(object):
         self.writer.add_scalar('{}_accuracy'.format(db_name), accuracy, self.step)
         self.writer.add_image('{}_roc_curve'.format(db_name), roc_curve_tensor, self.step)
 
-    def evaluate(self, conf, model_num, mode='test'):
-        model = self.models[model_num]
-        model.eval()
+    def evaluate_alt(self, conf, mode='test'):
+        for i in range(len(self.models)):
+            self.models[i].eval()
         # TODO look into this https://github.com/pytorch/pytorch/issues/11476
         # batching is unstable... limit to less gpus or use sync
-        n_classes = 5
+        n_classes = 5 if not conf.no_bkg else 4
+        predictions = dict.fromkeys(range(-1, len(self.models)), [])
+        prob = dict.fromkeys(range(-1, len(self.models)), [])
+        labels = []
+        loader = self.eval_train if mode == 'train' else self.eval_test
+        pos = 2 if mode == 'train' else 1
+        with torch.no_grad():
+            for imgs, label in tqdm(loader, total=len(loader), desc=mode, position=pos):
+                imgs = torch.cat(imgs).to(conf.device)
+
+                self.optimizer.zero_grad()
+                thetas = [model(imgs).detach() for model in self.models]
+                thetas = [torch.mean(torch.stack(thetas), 0)] + thetas
+                for ind, theta in zip(range(-1, len(self.models)), thetas):
+                    val, arg = torch.max(theta, dim=1)
+                    predictions[ind].append(arg.cpu().numpy())
+                    prob[ind].append(theta.cpu().numpy())
+                labels.append(torch.cat(label).detach().cpu().numpy())
+
+        labels = np.hstack(labels)
+        results = []
+        for ind in range(-1, len(self.models)):
+            predictions[ind] = np.hstack(predictions[ind])
+            prob[ind] = np.vstack(prob[ind])
+
+            # Compute ROC curve and ROC area for each class
+            res = (predictions[ind] == labels)
+            acc = sum(res) / len(res)
+            fpr, tpr, _ = roc_curve(np.repeat(res, n_classes), prob[ind].ravel())
+            buf = gen_plot(fpr, tpr)
+            roc_curve_im = Image.open(buf)
+            roc_curve_tensor = trans.ToTensor()(roc_curve_im)
+            results.append((acc, roc_curve_tensor))
+        return results
+
+    def evaluate(self, conf, model_num, mode='test'):
+        if model_num == -1:  # means mean model
+            for i in range(len(self.models)):
+                self.models[i].eval()
+        else:
+            model = self.models[model_num]
+            model.eval()
+        # TODO look into this https://github.com/pytorch/pytorch/issues/11476
+        # batching is unstable... limit to less gpus or use sync
+        n_classes = 5 if not conf.no_bkg else 4
         predictions = []
         prob = []
         labels = []
         loader = self.eval_train if mode == 'train' else self.eval_test
         pos = 2 if mode == 'train' else 1
+        model_num_str = model_num if model_num > -1 else 'mean'
         with torch.no_grad():
-            for imgs, label in tqdm(loader, total=len(loader), desc=mode+'_'+str(model_num), position=pos):
+            for imgs, label in tqdm(loader, total=len(loader), desc=mode+'_'+str(model_num_str), position=pos):
                 imgs = torch.cat(imgs).to(conf.device)
 
                 self.optimizer.zero_grad()
-                theta = model(imgs).detach()
+                if model_num == -1: # means mean model
+                    theta = torch.mean(torch.stack([model(imgs).detach() for model in self.models]), 0)
+                else:
+                    theta = model(imgs).detach()
 
                 val, arg = torch.max(theta, dim=1)
                 predictions.append(arg.cpu().numpy())
@@ -496,7 +547,7 @@ class PatchLearnerMult(object):
 
             # train
             for imgs, labels in tqdm(self.train_loader, desc='epoch {}'.format(e), total=len(self.train_loader), position=0):
-                imgs = torch.cat(imgs).to(conf.device)
+                imgs = torch.cat(imgs).to(conf.device, dtype=torch.half if conf.half else None)
                 labels = torch.cat(labels).to(conf.device)
 
                 self.optimizer.zero_grad()
@@ -538,7 +589,6 @@ class PatchLearnerMult(object):
                     loss_board = self.running_loss / self.board_loss_every
                     self.writer.add_scalar('train_loss', loss_board, self.step)
                     self.running_loss = 0.
-
                     if conf.pearson:  # ganovich listening to pearson
                         loss_board = self.running_pearson_loss / self.board_loss_every
                         self.writer.add_scalar('pearson_loss', loss_board, self.step)
@@ -551,17 +601,17 @@ class PatchLearnerMult(object):
 
                 self.step += 1
 
+            # TODO replace 3 pass with 1 pass
             # listen to validation and save every so often
             if self.epoch % self.evaluate_every == 0 and self.epoch != 0:
-                for model_num in range(conf.n_models):
-                    accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='test')
-                    self.board_val('mod_test_' + str(model_num), accuracy, roc_curve_tensor)
-                    self.models[model_num].train()
-            if self.epoch % self.evaluate_every == 0 and self.epoch != 0:
-                for model_num in range(conf.n_models):
-                    accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode='train')
-                    self.board_val('mod_train_' + str(model_num), accuracy, roc_curve_tensor)
-                    self.models[model_num].train()
+                for mode in ['test', 'train']:
+                    # results = self.evaluate_alt(conf=conf, mode='test')
+                    # for model_num, (accuracy, roc_curve_tensor) in zip(range(-1, conf.n_models), results):
+                    for model_num in range(-1 if conf.n_models > 1 else 0, conf.n_models):
+                        accuracy, roc_curve_tensor = self.evaluate(conf=conf, model_num=model_num, mode=mode)
+                        broad_name = 'mod_'+mode+'_' + str(model_num if model_num>-1 else 'mean')
+                        self.board_val(broad_name, accuracy, roc_curve_tensor)
+                        if model_num > -1: self.models[model_num].train()
 
             if self.epoch % self.save_every == 0 and self.epoch != 0:
                 self.save_state(conf, accuracy)
@@ -695,6 +745,7 @@ class PatchLearnerMultDist(object):
         predictions = []
         prob = []
         labels = []
+        confidance = []
         loader = self.eval_train if mode == 'train' else self.eval_test
         pos = 2 if mode == 'train' else 1
         with torch.no_grad():
@@ -703,20 +754,21 @@ class PatchLearnerMultDist(object):
 
                 self.optimizer.zero_grad()
                 theta = model(imgs).detach()
-
                 val, arg = torch.max(theta, dim=1)
+                confidance.append(val.cpu().numpy())
                 predictions.append(arg.cpu().numpy())
                 prob.append(theta.cpu().numpy())
                 labels.append(torch.cat(label).detach().cpu().numpy())
 
         predictions = np.hstack(predictions)
+        confidance = np.hstack(confidance)
         prob = np.vstack(prob)
         labels = np.hstack(labels)
 
         # Compute ROC curve and ROC area for each class
         res = (predictions == labels)
         acc = sum(res) / len(res)
-        fpr, tpr, _ = roc_curve(np.repeat(res, n_classes), prob.ravel())
+        fpr, tpr, _ = roc_curve(res, confidance)
         buf = gen_plot(fpr, tpr)
         roc_curve_im = Image.open(buf)
         roc_curve_tensor = trans.ToTensor()(roc_curve_im)
