@@ -29,6 +29,8 @@ if __name__ == '__main__':
     parser.add_argument("-ngpu", "--ngpu", help="how many gpu's to use?", default=1, type=int)
     parser.add_argument("-half", "--half", help="use half precisions?", default=0, type=int)
     parser.add_argument("-no_bkg", "--no_bkg", help="4 class mode", default=0, type=int)
+    parser.add_argument("-cancer", "--cancer_only", help="limit label to benign/malignant", default=0, type=int)
+    parser.add_argument("-type", "--type_only", help="limit label to mass/calcification", default=0, type=int)
 
     # TODO maybe add option to specify a network mix instead of duplicates
     parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[], type=float, nargs='*')
@@ -46,6 +48,9 @@ if __name__ == '__main__':
     conf = get_config()
 
     # training param
+    assert not (args.cancer_only and args.type_only)  # choose at most one
+    conf.cancer_only = args.cancer_only
+    conf.type_only = args.type_only
     conf.no_bkg = args.no_bkg
     conf.half = args.half
     conf.ngpu = args.ngpu

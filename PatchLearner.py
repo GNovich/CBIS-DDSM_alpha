@@ -321,10 +321,10 @@ class PatchLearnerMult(object):
 
         # ------------  define loaders -------------- #
 
-        self.train_ds = CBIS_PatchDataSet_INMEM(mode='train', patch_num=conf.n_patch,
-                                                prob_bkg=conf.bkg_prob, no_bkg=conf.no_bkg)
-        self.test_ds = CBIS_PatchDataSet_INMEM(mode='test', patch_num=conf.n_patch,
-                                               prob_bkg=conf.bkg_prob, no_bkg=conf.no_bkg)
+        self.train_ds = CBIS_PatchDataSet_INMEM(mode='train', patch_num=conf.n_patch, prob_bkg=conf.bkg_prob,
+                                                no_bkg=conf.no_bkg, cancer_only=conf.cancer_only, type_only=conf.type_only)
+        self.test_ds = CBIS_PatchDataSet_INMEM(mode='test', patch_num=conf.n_patch, prob_bkg=conf.bkg_prob,
+                                               no_bkg=conf.no_bkg, cancer_only=conf.cancer_only, type_only=conf.type_only)
 
         dloader_args = {
             'batch_size': conf.batch_size,

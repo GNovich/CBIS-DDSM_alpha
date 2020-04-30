@@ -193,7 +193,8 @@ class CBIS_Dataloader:
 
 
 class SourceDat(Dataset):
-    def __init__(self, mode='train', seed=None, og_resize=(1152,896), patch_size=224, nb_abn=10, nb_bkg=10, no_bkg=False):
+    def __init__(self, mode='train', seed=None, og_resize=(1152,896), patch_size=224, nb_abn=10, nb_bkg=10,
+                 no_bkg=False, cancer_only=False, type_only=False):
         """
         Args:
             csv_path (string): path to csv file
@@ -209,8 +210,14 @@ class SourceDat(Dataset):
         self.table = pd.concat([pd.read_csv(os.path.join(csv_dir, x)) for x in os.listdir(csv_dir) if mode in x])
         # adding label for pos patches, bkg patch is 0
         add_val = 0 if no_bkg else 1
-        self.table['pos_label'] = (pd.Series(
-            zip(self.table['label'], self.table['abnormality type'])).astype('category').cat.codes + add_val).values
+        if cancer_only:
+            label_dat = self.table['label']
+        elif type_only:
+            label_dat = self.table['abnormality type']
+        else:
+            label_dat = pd.Series(zip(self.table['label'], self.table['abnormality type']))
+
+        self.table['pos_label'] = (label_dat.astype('category').cat.codes + add_val).values
 
         # 1 know faulty sample
         self.table = self.table[self.table['ROI mask file path png'] != 'Calc-Training_P_00474_LEFT_MLO_1.png']
@@ -248,7 +255,7 @@ class SourceDat(Dataset):
 
 class CBIS_PatchDataSet_INMEM(Dataset):
     def __init__(self, mode='train', seed=None, og_resize=(1152,896), patch_size=224,
-                 patch_num=10, prob_bkg=.5, no_bkg=False):
+                 patch_num=10, prob_bkg=.5, no_bkg=False, cancer_only=False, type_only=False):
         """
         Args:
             csv_path (string): path to csv file
@@ -300,7 +307,7 @@ class CBIS_PatchDataSet_INMEM(Dataset):
 
         self.roi_im = []
         self.mam_im = []
-        src_dat = SourceDat(mode=mode, no_bkg=no_bkg)
+        src_dat = SourceDat(mode=mode, no_bkg=no_bkg, cancer_only=False, type_only=False)
 
         dloader_args = {
             'batch_size': 10,
