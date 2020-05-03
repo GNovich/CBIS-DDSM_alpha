@@ -25,13 +25,13 @@ def plot_confusion_matrix(correct_labels, predict_labels, labels, title='Confusi
     '''
     cm = confusion_matrix(correct_labels, predict_labels)
     if normalize:
-        cm = cm.astype('float') * 10 / cm.sum(axis=1)[:, np.newaxis]
+        cm = cm.astype('float') * 100 / cm.sum(axis=1)[:, np.newaxis]
         cm = np.nan_to_num(cm, copy=True)
 
     np.set_printoptions(precision=2)
     ###fig, ax = matplotlib.figure.Figure()
 
-    fig = matplotlib.figure.Figure(dpi=320, facecolor='w', edgecolor='k')
+    fig = matplotlib.figure.Figure(figsize=(4,4), dpi=320, facecolor='w', edgecolor='k')
     ax = fig.add_subplot(1, 1, 1)
     im = ax.imshow(cm, cmap='Oranges')
 
