@@ -435,7 +435,7 @@ class PatchLearnerMult(object):
         elif conf.cancer_only:
             label_names = ['mal', 'ben']
         else:
-            label_names = ['calc_mal', 'calc_ben', 'mass_mal', 'mass_ben']
+            label_names = ['calc_mal', 'mass_mal', 'calc_ben', 'mass_ben']
 
         if not conf.no_bkg:
             label_names = ['bkg'] + label_names
