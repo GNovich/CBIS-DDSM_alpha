@@ -301,8 +301,8 @@ class PatchLearnerMult(object):
     def __init__(self, conf):
 
         # -----------   define model --------------- #
-        n_classes = (2 if (conf.type_only or conf.cancer_only) else 4) + (0 if conf.no_bkg else 1)
-        build_model = PreBuildConverter(in_channels=1, out_classes=n_classes, add_soft_max=True,
+        self.n_classes = (2 if (conf.type_only or conf.cancer_only) else 4) + (0 if conf.no_bkg else 1)
+        build_model = PreBuildConverter(in_channels=1, out_classes=self.n_classes, add_soft_max=True,
                                         pretrained=conf.pre_train, half=conf.half)
         self.models = []
         for _ in range(conf.n_models):
@@ -429,13 +429,24 @@ class PatchLearnerMult(object):
         self.writer.add_figure('{}_conf_table'.format(db_name), cm_fig, self.step)
 
     def evaluate_alt(self, conf, mode='test'):
+        label_names = []
+        if conf.type_only:
+            label_names = ['calc', 'mass']
+        elif conf.cancer_only:
+            label_names = ['mal', 'ben']
+        else:
+            label_names = ['calc_mal', 'calc_ben', 'mass_mal', 'mass_ben']
+
+        if not conf.no_bkg:
+            label_names = ['bkg'] + label_names
+
         for i in range(len(self.models)):
             self.models[i].eval()
-        # TODO look into this https://github.com/pytorch/pytorch/issues/11476
-        # batching is unstable... limit to less gpus or use sync
-        n_classes = (2 if (conf.type_only or conf.cancer_only) else 4) + (0 if conf.no_bkg else 1)
-        predictions = dict.fromkeys(range(-1, len(self.models)), [])
-        prob = dict.fromkeys(range(-1, len(self.models)), [])
+
+        do_mean = -1 if len(self.models) > 1 else 0
+        ind_iter = range(do_mean, len(self.models))
+        predictions = dict(zip(ind_iter, [[] for i in ind_iter]))
+        prob = dict(zip(ind_iter, [[] for i in ind_iter]))
         labels = []
         loader = self.eval_train if mode == 'train' else self.eval_test
         pos = 2 if mode == 'train' else 1
@@ -445,8 +456,8 @@ class PatchLearnerMult(object):
 
                 self.optimizer.zero_grad()
                 thetas = [model(imgs).detach() for model in self.models]
-                thetas = [torch.mean(torch.stack(thetas), 0)] + thetas
-                for ind, theta in zip(range(-1, len(self.models)), thetas):
+                if len(self.models) > 1: thetas = [torch.mean(torch.stack(thetas), 0)] + thetas
+                for ind, theta in zip(range(do_mean, len(self.models)), thetas):
                     val, arg = torch.max(theta, dim=1)
                     predictions[ind].append(arg.cpu().numpy())
                     prob[ind].append(theta.cpu().numpy())
@@ -454,18 +465,19 @@ class PatchLearnerMult(object):
 
         labels = np.hstack(labels)
         results = []
-        for ind in range(-1, len(self.models)):
-            predictions[ind] = np.hstack(predictions[ind])
-            prob[ind] = np.vstack(prob[ind])
+        for ind in range(do_mean, len(self.models)):
+            curr_predictions = np.hstack(predictions[ind])
+            curr_prob = np.vstack(prob[ind])
 
             # Compute ROC curve and ROC area for each class
-            res = (predictions[ind] == labels)
+            img_d_fig = plot_confusion_matrix(labels, curr_predictions, label_names, tensor_name='dev/cm_' + mode)
+            res = (curr_predictions == labels)
             acc = sum(res) / len(res)
-            fpr, tpr, _ = roc_curve(np.repeat(res, n_classes), prob[ind].ravel())
+            fpr, tpr, _ = roc_curve(np.repeat(res, self.n_classes), curr_prob.ravel())
             buf = gen_plot(fpr, tpr)
             roc_curve_im = Image.open(buf)
             roc_curve_tensor = trans.ToTensor()(roc_curve_im)
-            results.append((acc, roc_curve_tensor))
+            results.append((acc, roc_curve_tensor, img_d_fig))
         return results
 
     def evaluate(self, conf, model_num, mode='test'):
@@ -477,7 +489,6 @@ class PatchLearnerMult(object):
             model.eval()
         # TODO look into this https://github.com/pytorch/pytorch/issues/11476
         # batching is unstable... limit to less gpus or use sync
-        n_classes = (2 if (conf.type_only or conf.cancer_only) else 4) + (0 if conf.no_bkg else 1)
         label_names = []
         if conf.type_only:
             label_names = ['calc', 'mass']
@@ -518,7 +529,7 @@ class PatchLearnerMult(object):
         img_d_fig = plot_confusion_matrix(labels, predictions, label_names, tensor_name='dev/cm_' + mode)
         res = (predictions == labels)
         acc = sum(res) / len(res)
-        fpr, tpr, _ = roc_curve(np.repeat(res, n_classes), prob.ravel())
+        fpr, tpr, _ = roc_curve(np.repeat(res, self.n_classes), prob.ravel())
         buf = gen_plot(fpr, tpr)
         roc_curve_im = Image.open(buf)
         roc_curve_tensor = trans.ToTensor()(roc_curve_im)
@@ -618,12 +629,13 @@ class PatchLearnerMult(object):
 
             # TODO replace 3 pass with 1 pass
             # listen to validation and save every so often
-            if self.epoch % self.evaluate_every == 0 and self.epoch != 0:
+            if self.epoch % self.evaluate_every == 0:# and self.epoch != 0:
                 for mode in ['test', 'train']:
-                    # results = self.evaluate_alt(conf=conf, mode='test')
-                    # for model_num, (accuracy, roc_curve_tensor) in zip(range(-1, conf.n_models), results):
-                    for model_num in range(-1 if conf.n_models > 1 else 0, conf.n_models):
-                        accuracy, roc_curve_tensor, img_d_fig = self.evaluate(conf=conf, model_num=model_num, mode=mode)
+                    results = self.evaluate_alt(conf=conf, mode=mode)
+                    do_mean = -1 if len(self.models) > 1 else 0
+                    #for model_num in range(-1 if conf.n_models > 1 else 0, conf.n_models):
+                    for model_num, (accuracy, roc_curve_tensor, img_d_fig) in zip(range(do_mean, conf.n_models), results):
+                        # accuracy, roc_curve_tensor, img_d_fig = self.evaluate(conf=conf, model_num=model_num, mode=mode)
                         broad_name = 'mod_'+mode+'_' + str(model_num if model_num>-1 else 'mean')
                         self.board_val(broad_name, accuracy, roc_curve_tensor, img_d_fig)
                         if model_num > -1: self.models[model_num].train()
