@@ -61,7 +61,7 @@ if __name__ == '__main__':
     conf.n_patch = args.n_patch
     conf.bkg_prob = args.bkg_prob if not args.no_bkg else 0
     conf.net_mode = args.net_mode
-    conf.evaluate_every = 1  # TODO see if relevant
+    conf.evaluate_every = 3   # TODO see if relevant
     conf.epoch_per_save = args.epoch_per_save
     conf.data_mode = args.data_mode
     conf.cpu_mode = args.cpu_mode
