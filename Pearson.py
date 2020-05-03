@@ -62,7 +62,7 @@ def ncl_loss(eta_hat):
     return ncl_val
 
 
-def pearson_corr_loss(eta_hat, labels, threshold=0.9):
+def pearson_corr_loss(eta_hat, labels, threshold=0.9, has_sofmax=True):
     n_models, _, num_classes = eta_hat.shape
     if n_models < 2:
         return torch.tensor(0)
@@ -70,14 +70,25 @@ def pearson_corr_loss(eta_hat, labels, threshold=0.9):
     orig_mask = torch.nn.functional.one_hot(labels, num_classes=num_classes)
     mask = (1 - orig_mask).type(torch.bool)
 
-    wrong_classes_outputs = [torch.masked_select(torch.softmax(eta_hat[i], 1), mask).reshape((-1, num_classes - 1))
-                             for i in
-                             range(len(eta_hat))]
+    if has_sofmax:
+        wrong_classes_outputs = [torch.masked_select(eta_hat[i], mask).reshape((-1, num_classes - 1))
+                                 for i in
+                                 range(len(eta_hat))]
 
-    wrong_classes_indicator = [
-        torch.masked_select(torch.softmax(eta_hat[i], 1), orig_mask.type(torch.bool)).reshape(
-            (-1, 1)) - torch.masked_select(torch.softmax(eta_hat[i], 1), mask).reshape((-1, num_classes - 1)) - threshold
-        for i in range(len(eta_hat))]
+        wrong_classes_indicator = [
+            torch.masked_select(eta_hat[i], orig_mask.type(torch.bool)).reshape(
+                (-1, 1)) - torch.masked_select(eta_hat[i], mask).reshape(
+                (-1, num_classes - 1)) - threshold
+            for i in range(len(eta_hat))]
+    else:
+        wrong_classes_outputs = [torch.masked_select(torch.softmax(eta_hat[i], 1), mask).reshape((-1, num_classes - 1))
+                                 for i in
+                                 range(len(eta_hat))]
+
+        wrong_classes_indicator = [
+            torch.masked_select(torch.softmax(eta_hat[i], 1), orig_mask.type(torch.bool)).reshape(
+                (-1, 1)) - torch.masked_select(torch.softmax(eta_hat[i], 1), mask).reshape((-1, num_classes - 1)) - threshold
+            for i in range(len(eta_hat))]
 
     wrong_classes_indicator = [torch.relu(-torch.min(wrong_classes_indicator[i], 1).values) for i in
                                range(len(eta_hat))]
