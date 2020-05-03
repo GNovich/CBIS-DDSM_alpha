@@ -426,7 +426,7 @@ class PatchLearnerMult(object):
     def board_val(self, db_name, accuracy, roc_curve_tensor, cm_fig):
         self.writer.add_scalar('{}_accuracy'.format(db_name), accuracy, self.step)
         self.writer.add_image('{}_roc_curve'.format(db_name), roc_curve_tensor, self.step)
-        self.writer.add_figure(cm_fig, self.step)
+        self.writer.add_figure('{}_conf_table'.format(db_name), cm_fig, self.step)
 
     def evaluate_alt(self, conf, mode='test'):
         for i in range(len(self.models)):
