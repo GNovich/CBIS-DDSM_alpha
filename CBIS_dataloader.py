@@ -307,7 +307,7 @@ class CBIS_PatchDataSet_INMEM(Dataset):
 
         self.roi_im = []
         self.mam_im = []
-        src_dat = SourceDat(mode=mode, no_bkg=no_bkg, cancer_only=False, type_only=False)
+        src_dat = SourceDat(mode=mode, no_bkg=no_bkg, cancer_only=cancer_only, type_only=type_only)
 
         dloader_args = {
             'batch_size': 10,
