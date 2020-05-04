@@ -70,7 +70,7 @@ if __name__ == '__main__':
     conf.batch_size = args.batch_size
     conf.num_workers = args.num_workers
     conf.epochs = args.epochs
-    conf.milestones = [int(conf.epochs * frac) for frac in args.milestones]
+    conf.milestones = args.milestones
 
     # pearson param
     conf.alpha = args.alpha
