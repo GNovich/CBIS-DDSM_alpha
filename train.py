@@ -33,7 +33,7 @@ if __name__ == '__main__':
     parser.add_argument("-type", "--type_only", help="limit label to mass/calcification", default=0, type=int)
 
     # TODO maybe add option to specify a network mix instead of duplicates
-    parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[], type=float, nargs='*')
+    parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[], type=int, nargs='*')
     parser.add_argument("-a", "--alpha", help="balancing parameter", default=0, type=float)
     parser.add_argument("-t", "--sig_thresh", help="thresholding of the most correct class", default=0.9, type=float)
     parser.add_argument("-p", "--pearson", help="using pearson loss", default=False, type=bool)
