@@ -20,6 +20,7 @@ import os
 import pandas as pd
 from models import three_step_params
 from conf_table_TB import plot_confusion_matrix
+from pathlib import Path
 plt.switch_backend('agg')
 
 class PatchLearner(object):
@@ -298,7 +299,7 @@ class PatchLearner(object):
 
 
 class PatchLearnerMult(object):
-    def __init__(self, conf):
+    def __init__(self, conf, inference=False):
 
         # -----------   define model --------------- #
         self.n_classes = (2 if (conf.type_only or conf.cancer_only) else 4) + (0 if conf.no_bkg else 1)
@@ -310,16 +311,17 @@ class PatchLearnerMult(object):
         print('{} {} models generated'.format(conf.n_models, conf.net_mode))
 
         # ------------  define params -------------- #
-        self.milestones = conf.milestones
-        if not os.path.exists(conf.log_path):
-            os.mkdir(conf.log_path)
-        self.writer = SummaryWriter(logdir=conf.log_path)
-        self.step = 0
-        self.epoch = 0
-        print('two model heads generated')
+        if not inference:
+            self.milestones = conf.milestones
+            if not os.path.exists(conf.log_path):
+                os.mkdir(conf.log_path)
+            self.writer = SummaryWriter(logdir=conf.log_path)
+            self.step = 0
+            self.epoch = 0
+            print('two model heads generated')
 
-        self.get_opt(conf)
-        print(self.optimizer)
+            self.get_opt(conf)
+            print(self.optimizer)
 
         # ------------  define loaders -------------- #
 
@@ -357,15 +359,16 @@ class PatchLearnerMult(object):
         #self.eval_test = DataLoader(self.test_ds, sampler=eval_test_sampler, **dloader_args)
         """
 
-        print('optimizers generated')
-        self.running_loss = 0.
-        self.running_pearson_loss = 0.
-        self.running_ensemble_loss = 0.
+        if not inference:
+            print('optimizers generated')
+            self.running_loss = 0.
+            self.running_pearson_loss = 0.
+            self.running_ensemble_loss = 0.
 
-        self.board_loss_every = max(len(self.train_loader) // 4, 1)
-        self.evaluate_every = conf.evaluate_every
-        self.save_every = max(conf.epoch_per_save, 1)
-        assert self.save_every >= self.evaluate_every
+            self.board_loss_every = max(len(self.train_loader) // 4, 1)
+            self.evaluate_every = conf.evaluate_every
+            self.save_every = max(conf.epoch_per_save, 1)
+            assert self.save_every >= self.evaluate_every
 
     def get_opt(self, conf):
         paras_only_bn = []
@@ -390,14 +393,14 @@ class PatchLearnerMult(object):
             save_path = conf.model_path
         for mod_num in range(conf.n_models):
             torch.save(
-                self.models[mod_num].state_dict(), save_path /
+                self.models[mod_num].state_dict(), Path(save_path) /
                                                    ('model_{}_{}_accuracy:{}_step:{}_{}.pth'.format(mod_num, get_time(),
                                                                                                     accuracy, self.step,
                                                                                                     extra)))
-            torch.save(
-                self.optimizer.state_dict(), save_path /
-                                             ('optimizer_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy,
-                                                                                               self.step, extra)))
+        torch.save(
+            self.optimizer.state_dict(), Path(save_path) /
+                                         ('optimizer_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy,
+                                                                                           self.step, extra)))
 
     def load_state(self, conf, fixed_str, from_save_folder=False, model_only=False):
         if from_save_folder:
