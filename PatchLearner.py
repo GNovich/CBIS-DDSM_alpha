@@ -315,6 +315,8 @@ class PatchLearnerMult(object):
             self.milestones = conf.milestones
             if not os.path.exists(conf.log_path):
                 os.mkdir(conf.log_path)
+            if not os.path.exists(conf.save_path):
+                os.mkdir(conf.save_path)
             self.writer = SummaryWriter(logdir=conf.log_path)
             self.step = 0
             self.epoch = 0
@@ -548,13 +550,14 @@ class PatchLearnerMult(object):
 
         pre_layers = three_step_params[conf.net_mode] if len(conf.pre_layers) < 1 else conf.pre_layers
         assert len(pre_layers) == len(conf.pre_steps)
-        for layer_step, layer_epoch in zip(pre_layers, conf.pre_steps):
+        last_stage = len(pre_layers) - 1
+        for stage, (layer_step, layer_epoch) in enumerate(zip(pre_layers, conf.pre_steps)):
             for model_num in range(conf.n_models):
                 for i, (name, param) in enumerate(self.models[model_num].named_parameters()):
                     param.requires_grad = (i > layer_step) or ('bn' in name)
-            self.train(conf, layer_epoch)
+            self.train(conf, layer_epoch, save_final=(stage == last_stage))
 
-    def train(self, conf, epochs):
+    def train(self, conf, epochs, save_final=True):
         if not conf.pre_train:
             for model_num in range(conf.n_models):
                 self.models[model_num].train()
@@ -647,7 +650,7 @@ class PatchLearnerMult(object):
                 self.save_state(conf, accuracy)
             self.epoch += 1
 
-        if accuracy is not None:
+        if accuracy is not None and save_final:
             self.save_state(conf, accuracy, to_save_folder=True, extra='final')
 
     def schedule_lr(self):
