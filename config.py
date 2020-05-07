@@ -60,5 +60,5 @@ def get_config(n_models=1):
     conf.cpu_mode = 0
     conf.n_models = n_models
     conf.device = torch.device("cuda" if (torch.cuda.is_available() and not conf.cpu_mode) else "cpu")
-
+    conf.with_roi = False
     return conf
