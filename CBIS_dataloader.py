@@ -10,7 +10,7 @@ import torch
 import pandas as pd
 import numpy as np
 import tqdm
-
+import random
 
 class CBIS_Dataloader:
     """
@@ -255,7 +255,8 @@ class SourceDat(Dataset):
 
 class CBIS_PatchDataSet_INMEM(Dataset):
     def __init__(self, mode='train', seed=None, og_resize=(1152,896), patch_size=224,
-                 patch_num=10, prob_bkg=.5, no_bkg=False, cancer_only=False, type_only=False):
+                 patch_num=10, prob_bkg=.5, no_bkg=False, cancer_only=False, type_only=False,
+                 with_roi=False):
         """
         Args:
             csv_path (string): path to csv file
@@ -267,6 +268,7 @@ class CBIS_PatchDataSet_INMEM(Dataset):
         self.patch_num = patch_num
         self.prob_bkg = prob_bkg
         self.seed = seed
+        self.with_roi = with_roi
         csv_dir = 'csv_files'
         self.table = pd.concat([pd.read_csv(os.path.join(csv_dir, x)) for x in os.listdir(csv_dir) if mode in x])
         # 1 know faulty sample
@@ -326,6 +328,20 @@ class CBIS_PatchDataSet_INMEM(Dataset):
                 # Calculate len
         self.data_len = len(self.label_arr)
 
+    def patch_transform_func(self, image, mask):
+        angles = [0, 90, 180, 270]
+        angle = np.random.choice(angles)
+        image = trans.functional.rotate(image, angle)
+        mask = trans.functional.rotate(mask, angle)
+
+        if random.random() > 0.5:
+            image = trans.RandomHorizontalFlip(1)(image)
+            mask = trans.RandomHorizontalFlip(1)(mask)
+        if random.random() > 0.5:
+            image = trans.RandomVerticalFlip(1)(image)
+            mask = trans.RandomVerticalFlip(1)(mask)
+        return trans.ToTensor()(image), trans.ToTensor()(mask)
+
     def get_cont(self, im):
         _, contours, _ = cv2.findContours(im.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         cont_areas = [cv2.contourArea(cont) for cont in contours]
@@ -383,19 +399,27 @@ class CBIS_PatchDataSet_INMEM(Dataset):
             bkg_targets = bkg_targets[rng.choice(len(bkg_targets), nb_bkg)]
             targets = np.concatenate([targets, bkg_targets]) if targets != [] else bkg_targets
 
+        roi_patches = []
         patches = []
         for target_x, target_y in targets:
             patch = img.crop((target_y - patch_size // 2, target_x - patch_size // 2,
                               target_y + patch_size // 2, target_x + patch_size // 2))
-            patches.append(self.patch_transform(patch))
-        return patches, nb_abn, nb_bkg
+            if self.with_roi:
+                roi_patch = roi_image.crop((target_y - patch_size // 2, target_x - patch_size // 2,
+                                  target_y + patch_size // 2, target_x + patch_size // 2))
+                patch, roi_patch = self.patch_transform_func(patch, roi_patch)
+                patches.append(patch)
+                roi_patches.append(roi_patch)
+            else:
+                patches.append(self.patch_transform(patch))
+
+        return ([patches, roi_patches] if self.with_roi else patches), nb_abn, nb_bkg
 
     def __getitem__(self, index):
         # Open image
         patches, nb_abn, nb_bkg = self.sample_patches(index)
         # Get label(class) of the image based on the cropped pandas column
         single_image_label = ([self.label_arr[index]] * nb_abn) + ([0] * nb_bkg)
-
         return (patches, single_image_label)
 
     def __len__(self):
