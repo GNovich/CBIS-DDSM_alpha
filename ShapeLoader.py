@@ -36,7 +36,6 @@ class ShapeDataSet(Dataset):
         self.colors = [[(255, 255), (0, 0), (0, 0)],
                        [(0, 0), (255, 255), (0, 0)],
                        [(0, 0), (0, 0), (255, 255)]]
-        np.random.shuffle(self.colors)
         self.colors = self.colors[:n_colors]
 
         ziped_classes = enumerate(product(range(n_shapes), range(n_colors)))

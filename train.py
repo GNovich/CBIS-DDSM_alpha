@@ -31,6 +31,7 @@ if __name__ == '__main__':
     parser.add_argument("-no_bkg", "--no_bkg", help="4 class mode", default=0, type=int)
     parser.add_argument("-cancer", "--cancer_only", help="limit label to benign/malignant", default=0, type=int)
     parser.add_argument("-type", "--type_only", help="limit label to mass/calcification", default=0, type=int)
+    parser.add_argument("-single_type", "--single_type", help="limit labels to mass=1 or calcification=2", default=0, type=int)
 
     # TODO maybe add option to specify a network mix instead of duplicates
     parser.add_argument("-m", "--milestones", help="fractions of where lr will be tuned", default=[], type=int, nargs='*')
@@ -49,6 +50,7 @@ if __name__ == '__main__':
 
     # training param
     assert not (args.cancer_only and args.type_only)  # choose at most one
+    conf.single_type = args.single_type
     conf.cancer_only = args.cancer_only
     conf.type_only = args.type_only
     conf.no_bkg = args.no_bkg
