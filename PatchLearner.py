@@ -445,6 +445,9 @@ class PatchLearnerMult(object):
         if not conf.no_bkg:
             label_names = ['bkg'] + label_names
 
+        # todo experiment
+        # label_names = ['mass_mal', 'mass_ben', 'bkg', 'calc_ben', 'calc_mal']
+
         for i in range(len(self.models)):
             self.models[i].eval()
 

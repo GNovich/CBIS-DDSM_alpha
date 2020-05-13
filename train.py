@@ -93,7 +93,8 @@ if __name__ == '__main__':
     param_desc = '_'.join([
         str(conf.net_mode), 'lr='+str(conf.lr), 'm='+'_'.join([str(m) for m in conf.milestones]),
         ('a='+str(conf.alpha) if conf.n_models>1 else ''),
-        str(conf.batch_size), str(conf.n_patch)] +
+        str(conf.batch_size), str(conf.n_patch), 'type_only' if conf.type_only else '',
+                              'cancer_only' if conf.cancer_only else ''] +
         ([] if not conf.pre_train else
          ['pre', 'pre_layers='+'_'.join([str(m) for m in conf.pre_layers]),
           'pre_steps='+'_'.join([str(m) for m in conf.pre_steps])])
