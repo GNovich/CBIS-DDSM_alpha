@@ -302,7 +302,7 @@ class PatchLearnerMult(object):
     def __init__(self, conf, inference=False):
 
         # -----------   define model --------------- #
-        self.n_classes = (2 if (conf.type_only or conf.cancer_only) else 4) + (0 if conf.no_bkg else 1)
+        self.n_classes = (2 if (conf.type_only or conf.cancer_only or conf.single_type) else 4) + (0 if conf.no_bkg else 1)
         build_model = PreBuildConverter(in_channels=1, out_classes=self.n_classes, add_soft_max=True,
                                         pretrained=conf.pre_train, half=conf.half)
         self.models = []
@@ -327,10 +327,14 @@ class PatchLearnerMult(object):
 
         # ------------  define loaders -------------- #
 
-        self.train_ds = CBIS_PatchDataSet_INMEM(mode='train', patch_num=conf.n_patch, prob_bkg=conf.bkg_prob, with_roi=conf.with_roi,
-                                                no_bkg=conf.no_bkg, cancer_only=conf.cancer_only, type_only=conf.type_only)
-        self.test_ds = CBIS_PatchDataSet_INMEM(mode='test', patch_num=conf.n_patch, prob_bkg=conf.bkg_prob, with_roi=conf.with_roi,
-                                               no_bkg=conf.no_bkg, cancer_only=conf.cancer_only, type_only=conf.type_only)
+        self.train_ds = CBIS_PatchDataSet_INMEM(mode='train', patch_num=conf.n_patch, with_roi=conf.with_roi,
+                                                prob_bkg=conf.bkg_prob, no_bkg=conf.no_bkg,
+                                                single_type=conf.single_type,
+                                                cancer_only=conf.cancer_only, type_only=conf.type_only)
+        self.test_ds = CBIS_PatchDataSet_INMEM(mode='test', patch_num=conf.n_patch, with_roi=conf.with_roi,
+                                               prob_bkg=conf.bkg_prob, no_bkg=conf.no_bkg,
+                                               single_type=conf.single_type,
+                                               cancer_only=conf.cancer_only, type_only=conf.type_only)
 
         dloader_args = {
             'batch_size': conf.batch_size,
@@ -437,7 +441,7 @@ class PatchLearnerMult(object):
         label_names = []
         if conf.type_only:
             label_names = ['calc', 'mass']
-        elif conf.cancer_only:
+        elif conf.cancer_only or conf.single_type:
             label_names = ['mal', 'ben']
         else:
             label_names = ['calc_mal', 'mass_mal', 'calc_ben', 'mass_ben']
@@ -500,7 +504,7 @@ class PatchLearnerMult(object):
         label_names = []
         if conf.type_only:
             label_names = ['calc', 'mass']
-        elif conf.cancer_only:
+        elif conf.cancer_only or conf.single_type:
             label_names = ['mal', 'ben']
         else:
             label_names = ['calc_mal', 'calc_ben', 'mass_mal', 'mass_ben']

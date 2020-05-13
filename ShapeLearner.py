@@ -11,7 +11,6 @@ from sklearn.metrics import roc_curve
 import numpy as np
 from models import PreBuildConverter
 import torch
-from torch.utils.data.sampler import WeightedRandomSampler
 import os
 import pandas as pd
 from models import three_step_params

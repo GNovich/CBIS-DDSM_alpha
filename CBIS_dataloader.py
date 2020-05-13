@@ -194,7 +194,7 @@ class CBIS_Dataloader:
 
 class SourceDat(Dataset):
     def __init__(self, mode='train', seed=None, og_resize=(1152,896), patch_size=224, nb_abn=10, nb_bkg=10,
-                 no_bkg=False, cancer_only=False, type_only=False):
+                 no_bkg=False, single_type=0, cancer_only=False, type_only=False):
         """
         Args:
             csv_path (string): path to csv file
@@ -210,6 +210,10 @@ class SourceDat(Dataset):
         self.table = pd.concat([pd.read_csv(os.path.join(csv_dir, x)) for x in os.listdir(csv_dir) if mode in x])
         # adding label for pos patches, bkg patch is 0
         add_val = 0 if no_bkg else 1
+        if single_type != 0:
+            target_type = 'mass' if single_type==1 else 'calcification'
+            self.table = self.table[self.table['abnormality type'] == target_type]
+
         if cancer_only:
             label_dat = self.table['label']
         elif type_only:
@@ -258,7 +262,7 @@ class SourceDat(Dataset):
 class CBIS_PatchDataSet_INMEM(Dataset):
     def __init__(self, mode='train', seed=None, og_resize=(1152,896), patch_size=224,
                  patch_num=10, prob_bkg=.5, no_bkg=False, cancer_only=False, type_only=False,
-                 with_roi=False):
+                 single_type=0, with_roi=False):
         """
         Args:
             csv_path (string): path to csv file
@@ -312,7 +316,8 @@ class CBIS_PatchDataSet_INMEM(Dataset):
 
         self.roi_im = []
         self.mam_im = []
-        src_dat = SourceDat(mode=mode, no_bkg=no_bkg, cancer_only=cancer_only, type_only=type_only)
+        src_dat = SourceDat(mode=mode, no_bkg=no_bkg, single_type=single_type,
+                            cancer_only=cancer_only, type_only=type_only)
 
         dloader_args = {
             'batch_size': 10,
