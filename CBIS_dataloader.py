@@ -217,6 +217,8 @@ class SourceDat(Dataset):
         else:
             label_dat = pd.Series(zip(self.table['label'], self.table['abnormality type']))
 
+        # todo experiment
+        # self.table['pos_label'] = label_dat.map({(0, 'mass'): 0, (1, 'mass'): 1, (0, 'calcification'): 3, (1, 'calcification'): 4})
         self.table['pos_label'] = (label_dat.astype('category').cat.codes + add_val).values
 
         # 1 know faulty sample
@@ -263,6 +265,7 @@ class CBIS_PatchDataSet_INMEM(Dataset):
             img_path (string): path to the folder where images are
             transform: pytorch transforms for transforms and tensor conversion
         """
+        self.bkg_label = 0 #2 TODO exp
         self.og_resize = og_resize
         self.patch_size = patch_size
         self.patch_num = patch_num
@@ -419,7 +422,7 @@ class CBIS_PatchDataSet_INMEM(Dataset):
         # Open image
         patches, nb_abn, nb_bkg = self.sample_patches(index)
         # Get label(class) of the image based on the cropped pandas column
-        single_image_label = ([self.label_arr[index]] * nb_abn) + ([0] * nb_bkg)
+        single_image_label = ([self.label_arr[index]] * nb_abn) + ([self.bkg_label] * nb_bkg)
         return (patches, single_image_label)
 
     def __len__(self):
