@@ -450,7 +450,7 @@ class PatchLearnerMult(object):
             label_names = ['bkg'] + label_names
 
         # todo experiment
-        # label_names = ['mass_mal', 'mass_ben', 'bkg', 'calc_ben', 'calc_mal']
+        label_names = ['mass_mal', 'mass_ben', 'bkg', 'calc_ben', 'calc_mal']
 
         for i in range(len(self.models)):
             self.models[i].eval()
@@ -599,9 +599,6 @@ class PatchLearnerMult(object):
                     thetas.append(theta)
                     joint_losses.append(conf.ce_loss(theta, labels))
                 joint_losses = sum(joint_losses) / max(len(joint_losses), 1)
-
-                if self.step == 70:
-                    pass
 
                 # calc loss
                 if conf.pearson:

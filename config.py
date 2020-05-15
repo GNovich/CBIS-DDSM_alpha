@@ -8,7 +8,7 @@ import time
 import torch
 import os
 
-def get_config(n_models=1):
+def get_config(n_models=1, logext=''):
     conf = edict()
     ts = time.time()
     st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H:%M')
@@ -16,8 +16,13 @@ def get_config(n_models=1):
     conf.data_path = Path('data')
     conf.work_path = Path('work_space')
     conf.model_path = conf.work_path / 'models'
-    conf.log_path = conf.work_path / 'log' / st
-    conf.save_path = conf.work_path / 'save' / st
+    if not os.path.exists(conf.work_path / 'log' / logext):
+        os.mkdir(conf.work_path / 'log' / logext)
+    if not os.path.exists(conf.work_path / 'save' / logext):
+        os.mkdir(conf.work_path / 'save' / logext)
+    conf.log_path = conf.work_path / 'log' / logext / st
+    conf.save_path = conf.work_path / 'save' / logext / st
+
     conf.net_mode = 'resnet50'  # or 'ir
 
     conf.im_transform = trans.Compose([
