@@ -21,7 +21,6 @@ from foolbox.attacks import FGSM, L2BasicIterativeAttack as BIM, PGD, \
 
 # Momentum Iterative Method (MIM)
 # Jacobian-based Saliency Map Attack (JSMA)
-
 attack_list = [
     (FGSM, [0.002, 0.004]),
     (partial(BIM, rel_stepsize=0.1, steps=10), [0.01, 0.02]),
@@ -46,7 +45,16 @@ attack_list_names = [
     #'(MIM, 0.01)',
     #'(MIM, 0.02)',
 ]
+"""
+# debug
+attack_list = [
+    (FGSM, [0.002, 0.004]),
+]
 
+attack_list_names = [
+    'FGSM',
+]
+"""
 def prep_learner():
     conf = get_config(2)
     conf.device = 'cpu'
@@ -148,8 +156,8 @@ class JointModelEP(torch.nn.Module):
         return ep.stack(res, 1).mean(1)
 
 def run_attacks(MODEL_DIR, res_path):
-    rel_dirs = os.listdir(MODEL_DIR)
-    alpha = [re.findall('a=([0-9, \.]*)_', d)[0] for d in rel_dirs if '2020' in d]
+    rel_dirs = [x for x in os.listdir(MODEL_DIR) if '2020' in x]
+    alpha = [re.findall('a=([0-9, \.]*)_', d)[0] for d in rel_dirs]
     res = dict.fromkeys(alpha)
     learner = prep_learner()
 
@@ -178,7 +186,7 @@ def run_attacks(MODEL_DIR, res_path):
             success_tot = ep.concatenate(success_tot, -1)
 
             # calculate and report the robust accuracy
-            robust_accuracy = 1 - success.float32().mean(axis=-1)
+            robust_accuracy = 1 - success_tot.float32().mean(axis=-1)
             for epsilon, acc in zip(eps, robust_accuracy):
                 res[curr_alpha][attack_name + '_' + str(epsilon)] = acc.item()
 
@@ -218,8 +226,8 @@ def get_TTR_FTR_curve(prob_prob, distractors_prob, prob_labels):
 
 
 def ood_test(MODEL_DIR, res_path):
-    rel_dirs = os.listdir(MODEL_DIR)
-    alpha = [re.findall('a=([0-9, \.]*)_', d)[0] for d in rel_dirs if 'model' in d]
+    rel_dirs = [x for x in os.listdir(MODEL_DIR) if '2020' in x]
+    alpha = [re.findall('a=([0-9, \.]*)_', d)[0] for d in rel_dirs]
     learner = prep_learner()
 
     res_dir = dict.fromkeys(alpha)
