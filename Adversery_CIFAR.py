@@ -331,6 +331,95 @@ def run_attacks(res_path):
     pickle.dump(res, open(res_path, 'wb'))
 
 
+from absl import app, flags
+from easydict import EasyDict
+from cleverhans.future.torch.attacks import fast_gradient_method, projected_gradient_descent
+FLAGS = flags.FLAGS
+def run_attacks_cleverhans(res_path):
+    MORPH_MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results_morph_correct/CIFAR-10/densenet-82-8-8'
+    MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results/CIFAR-10/densenet-82-8-8'
+    # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_2_1581641733617'
+    # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_2_1581641746832'
+    # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_2_1581641777871'
+    UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_3_1585505819121'
+    CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_3_1585505685528'
+    CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_3_1585505042819'
+
+    rel_dirs = [UNCORR_MODEL_DIR, CORR_MODEL_DIR, CORR_MODEL_DIR_2]
+    alpha = ['0', '0.1', '0.2']
+
+    res = dict.fromkeys(alpha)
+    batch_size = 128  # 516
+    n_workers = 20
+    dataset = 'CIFAR-10'
+    network = 'densenet-82-8-8'
+    loaders, _ = get_dataloaders_(batch_size, 0, dataset, False, early_stop=False, n_workers=n_workers)
+    n_models = 3
+
+    params = {}
+    params['densenet-82-8-8'] = {'num_modules': 2, 'bottleneck': True, 'reduction': 0.5, 'depth': 82, 'growth_rate': 8,
+                                 'input_shape': (3, 32, 32), 'output_dim': 10}
+    network = 'densenet-82-8-8'
+    model = DenseNet(input_shape=params[network]['input_shape'],
+                     output_dim=params[network]['output_dim'],
+                     growth_rate=params[network]['growth_rate'],
+                     depth=params[network]['depth'],
+                     reduction=params[network]['reduction'],
+                     bottleneck=params[network]['bottleneck'],
+                     num_modules=n_models)
+
+    device = torch.device("cuda")
+    reports = dict.fromkeys(alpha)
+    for model_path, curr_alpha in tqdm(zip(rel_dirs, alpha), total=len(alpha)):
+        weight_path = path.join(MODEL_DIR, model_path, 'trial_0/0.0/weights/final_weights.pt')
+        model.reset_parameters()
+        model.load_state_dict(torch.load(weight_path))
+        model.eval()  # model.train(mode=False)
+        net = ModelMeanEP(model).to(device)
+
+        report = dict()
+        for x, y in tqdm(loaders['test'], total=len(loaders['test'])):
+            x, y = x.to(device), y.to(device)
+            report['nb_test'] = report.get('nb_test', 0) + y.size(0)
+
+            _, y_pred = net(x).max(1)  # model prediction on clean examples
+            report['acc'] = report.get('acc', 0) + y_pred.eq(y).sum().item()
+
+            # model prediction on FGM adversarial examples
+            x_adv = fast_gradient_method(net, x, 0.02, np.inf)
+            _, y_pred = net(x_adv).max(1)  # model prediction on FGM adversarial examples
+            report['FGM_0.02'] = report.get('FGM_0.02', 0) + y_pred.eq(y).sum().item()
+
+            x_adv = fast_gradient_method(net, x, 0.04, np.inf)
+            _, y_pred = net(x_adv).max(1)  # model prediction on FGM adversarial examples
+            report['FGM_0.04'] = report.get('FGM_0.04', 0) + y_pred.eq(y).sum().item()
+
+            # model prediction on BIM adversarial examples
+            x_adv = projected_gradient_descent(net, x, eps=0.01, eps_iter=0.01 / 10, nb_iter=10, norm=np.inf, rand_init=0)
+            _, y_pred = net(x_adv).max(1)
+            report['BIM_0.01'] = report.get('BIM_0.01', 0) + y_pred.eq(y).sum().item()
+
+            x_adv = projected_gradient_descent(net, x, eps=0.02, eps_iter=0.02 / 10, nb_iter=10, norm=np.inf, rand_init=0)
+            _, y_pred = net(x_adv).max(1)
+            report['BIM_0.02'] = report.get('BIM_0.02', 0) + y_pred.eq(y).sum().item()
+
+            # model prediction on PGD adversarial examples
+            x_adv = projected_gradient_descent(net, x, eps=0.01, eps_iter=0.01 / 10, nb_iter=10, norm=np.inf)
+            _, y_pred = net(x_adv).max(1)
+            report['PGD_0.01'] = report.get('PGD_0.01', 0) + y_pred.eq(y).sum().item()
+
+            x_adv = projected_gradient_descent(net, x, eps=0.02, eps_iter=0.02 / 10, nb_iter=10, norm=np.inf)
+            _, y_pred = net(x_adv).max(1)
+            report['PGD_0.02'] = report.get('PGD_0.02', 0) + y_pred.eq(y).sum().item()
+
+        for key in ['acc', 'FGM_0.02', 'FGM_0.04', 'BIM_0.01', 'BIM_0.02', 'PGD_0.01', 'PGD_0.02']:
+            report[key] = (report[key] / report['nb_test']) * 100.
+
+        reports[curr_alpha] = report
+        pickle.dump(reports, open(res_path, 'wb'))
+    pickle.dump(reports, open(res_path, 'wb'))
+
+
 def get_TTR_FTR_curve(prob_prob, distractors_prob, prob_labels):
     open_set_1st_labels_0 = np.argmax(distractors_prob[0], 1)
     open_set_1st_labels_1 = np.argmax(distractors_prob[1], 1)
@@ -399,4 +488,5 @@ if __name__ == '__main__':
         ood_test(res_path)
     else:
         res_path = str('cifar_attack_res.pkl')
-        run_attacks(res_path)
+        run_attacks_cleverhans(res_path)
+        #run_attacks(res_path)
