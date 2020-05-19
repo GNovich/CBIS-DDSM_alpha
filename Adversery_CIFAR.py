@@ -333,7 +333,7 @@ def run_attacks(res_path):
     pickle.dump(res, open(res_path, 'wb'))
 
 
-def run_OnePixleAttack(res_path):
+def run_OnePixleAttack(res_path, model_num=-1, n_pixel=1):
     MORPH_MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results_morph_correct/CIFAR-10/densenet-82-8-8'
     MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results/CIFAR-10/densenet-82-8-8'
     # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_2_1581641733617'
@@ -353,6 +353,10 @@ def run_OnePixleAttack(res_path):
                 'alpha_0.6_gamma_0.0_n_models_3_1589796218204',
                 'alpha_0.7_gamma_0.0_n_models_3_1589796234665']
     alpha = list(map(lambda x: format(x, '2.1f'), np.arange(0.0, 0.8, 0.1)))
+    if model_num!=-1:
+        rel_dirs = [rel_dirs[model_num]]
+        alpha = [alpha[model_num]]
+        res_path = res_path+"_"+str(model_num)
 
     batch_size = 1  # 516
     n_workers = 20
@@ -381,10 +385,13 @@ def run_OnePixleAttack(res_path):
         model.load_state_dict(torch.load(weight_path))
         model.eval()  # model.train(mode=False)
         net = ModelMeanEP(model).to(device)
-        results = OnePixleAttack(net, loaders['test'])
+        results = OnePixleAttack(net, loaders['test'], pixels=n_pixel)
         # (pixels=1, targeted=False, maxiter=75, popsize=400, verbose=False)
 
         reports[curr_alpha] = results
+        pickle.dump(reports, open(res_path, 'wb'))
+    pickle.dump(reports, open(res_path, 'wb'))
+
 
 from absl import app, flags
 from easydict import EasyDict
@@ -541,6 +548,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='for CBIS-DDSM')
     parser.add_argument("-ood", "--ood_test", help="do ood test instead?", default=0, type=int)
     parser.add_argument("-opa", "--one_pixel", help="do one pixel attack instead?", default=0, type=int)
+    parser.add_argument("-model_num", "--model_num", help="run a spesific model?", default=-1, type=int)
+    parser.add_argument("-n_pixel", "--n_pixel", help="n_pixel?", default=1, type=int)
 
     args = parser.parse_args()
     conf = get_config()
@@ -550,7 +559,7 @@ if __name__ == '__main__':
         ood_test(res_path)
     elif args.one_pixel:
         res_path = str('cifar_one_pixle_attack_res.pkl')
-        run_OnePixleAttack(res_path)
+        run_OnePixleAttack(res_path, args.model_num, args.n_pixel)
     else:
         res_path = str('cifar_attack_res.pkl')
         run_attacks_cleverhans(res_path)
