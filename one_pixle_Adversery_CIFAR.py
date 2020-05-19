@@ -21,9 +21,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import transforms, datasets
 sys.path.append('one-pixel-attack-pytorch')
 from attack import attack_all as OnePixleAttack
-from foolbox.attacks import FGSM, L2BasicIterativeAttack as BIM, PGD, \
-                            L2CarliniWagnerAttack as CaW, EADAttack as EAD, \
-                            L2BrendelBethgeAttack as MIM_maybe
+
 sys.path.append('/mnt/md0/orville/Miriam/modular-loss-experiments-morph/')
 from src.models import DenseModel, ConvModel, DenseNet
 from src.argument_parser import parse_args
@@ -35,40 +33,6 @@ class_dir = {0:'airplane', 1:'automobile', 2:'bird', 3:'cat', 4:'deer',
 # Momentum Iterative Method (MIM)
 # Jacobian-based Saliency Map Attack (JSMA)
 
-attack_list = [
-    (FGSM, [0.02, 0.04]),
-    (partial(BIM, rel_stepsize=0.1, steps=10), [0.01, 0.02]),
-    (partial(PGD, rel_stepsize=0.1, steps=10), [0.01, 0.02]),
-    (partial(CaW, steps=1000, stepsize=0.01, confidence=0.001), [0.001]),
-    (partial(CaW, steps=1000, stepsize=0.01, confidence=0.01), [0.01]),
-    (partial(CaW, steps=1000, stepsize=0.01, confidence=0.1), [0.1]),
-    (partial(EAD, steps=1000, initial_stepsize=0.01, confidence=1), [1]),
-    (partial(EAD, steps=1000, initial_stepsize=0.01, confidence=5), [5])
-    #(partial(MIM_maybe, lr=0.01), [0.01, 0.02]),
-]
-
-attack_list_names = [
-    'FGSM',
-    'BIM',
-    'PGD',
-    'CaW',
-    'CaW',
-    'CaW',
-    'EAD',
-    'EAD'
-    #'(MIM, 0.01)',
-    #'(MIM, 0.02)',
-]
-"""
-# debug
-attack_list = [
-    (FGSM, [0, 0.02, 0.04, 0.2, 0.4]),
-]
-
-attack_list_names = [
-    'FGSM',
-]
-"""
 datasets_dict = {'CIFAR-10': {
     'dataset': datasets.CIFAR10,
     'train_transform': transforms.Compose([
@@ -266,7 +230,7 @@ class ModelMeanEP(torch.nn.Module):
 
     def forward(self, x):
         res = torch.nn.Softmax(-1)(self.model(x))
-        return torch.cat([x.mean(0) for x in torch.chunk(res, len(self.model.device_ids))])
+        return torch.cat([x.mean(0) for x in torch.chunk(res, 4)])
         #return torch.cat([x.max(0).values for x in torch.chunk(res, 4)])
 
 
@@ -333,84 +297,21 @@ def run_attacks(res_path):
     pickle.dump(res, open(res_path, 'wb'))
 
 
-def run_OnePixleAttack(res_path):
-    MORPH_MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results_morph_correct/CIFAR-10/densenet-82-8-8'
-    MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results/CIFAR-10/densenet-82-8-8'
-    # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_2_1581641733617'
-    # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_2_1581641746832'
-    # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_2_1581641777871'
-    # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_3_1585505819121'
-    # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_3_1585505685528'
-    # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_3_1585505042819'
-    # rel_dirs = [UNCORR_MODEL_DIR, CORR_MODEL_DIR, CORR_MODEL_DIR_2]
-    # alpha = ['0', '0.1', '0.2']
-    rel_dirs = ['alpha_0.0_gamma_0.0_n_models_3_1585505819121',
-                'alpha_0.1_gamma_0.0_n_models_3_1589795142450',
-                'alpha_0.2_gamma_0.0_n_models_3_1589794987034',
-                'alpha_0.3_gamma_0.0_n_models_3_1589795486214',
-                'alpha_0.4_gamma_0.0_n_models_3_1589796192038',
-                'alpha_0.5_gamma_0.0_n_models_3_1589796200262',
-                'alpha_0.6_gamma_0.0_n_models_3_1589796218204',
-                'alpha_0.7_gamma_0.0_n_models_3_1589796234665']
-    alpha = list(map(lambda x: format(x, '2.1f'), np.arange(0.0, 0.8, 0.1)))
-
-    batch_size = 1  # 516
-    n_workers = 20
-    dataset = 'CIFAR-10'
-    network = 'densenet-82-8-8'
-    loaders, _ = get_dataloaders_(batch_size, 0, dataset, False, early_stop=False, n_workers=n_workers)
-    n_models = 3
-
-    params = {}
-    params['densenet-82-8-8'] = {'num_modules': n_models, 'bottleneck': True, 'reduction': 0.5, 'depth': 82, 'growth_rate': 8,
-                                 'input_shape': (3, 32, 32), 'output_dim': 10}
-    network = 'densenet-82-8-8'
-    model = DenseNet(input_shape=params[network]['input_shape'],
-                     output_dim=params[network]['output_dim'],
-                     growth_rate=params[network]['growth_rate'],
-                     depth=params[network]['depth'],
-                     reduction=params[network]['reduction'],
-                     bottleneck=params[network]['bottleneck'],
-                     num_modules=n_models)
-
-    device = torch.device("cuda")
-    reports = dict.fromkeys(alpha)
-    for model_path, curr_alpha in tqdm(zip(rel_dirs, alpha), total=len(alpha)):
-        weight_path = path.join(MODEL_DIR, model_path, 'trial_0/0.0/weights/final_weights.pt')
-        model.reset_parameters()
-        model.load_state_dict(torch.load(weight_path))
-        model.eval()  # model.train(mode=False)
-        net = ModelMeanEP(model).to(device)
-        results = OnePixleAttack(net, loaders['test'])
-        # (pixels=1, targeted=False, maxiter=75, popsize=400, verbose=False)
-
-        reports[curr_alpha] = results
-
-from absl import app, flags
-from easydict import EasyDict
-from cleverhans.future.torch.attacks import fast_gradient_method, projected_gradient_descent
-FLAGS = flags.FLAGS
 def run_attacks_cleverhans(res_path):
     MORPH_MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results_morph_correct/CIFAR-10/densenet-82-8-8'
     MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results/CIFAR-10/densenet-82-8-8'
     # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_2_1581641733617'
     # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_2_1581641746832'
     # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_2_1581641777871'
-    # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_3_1585505819121'
-    # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_3_1585505685528'
-    # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_3_1585505042819'
-    # rel_dirs = [UNCORR_MODEL_DIR, CORR_MODEL_DIR, CORR_MODEL_DIR_2]
-    rel_dirs = ['alpha_0.0_gamma_0.0_n_models_3_1585505819121',
-              'alpha_0.1_gamma_0.0_n_models_3_1589795142450',
-              'alpha_0.2_gamma_0.0_n_models_3_1589794987034',
-              'alpha_0.3_gamma_0.0_n_models_3_1589795486214',
-              'alpha_0.4_gamma_0.0_n_models_3_1589796192038',
-              'alpha_0.5_gamma_0.0_n_models_3_1589796200262',
-              'alpha_0.6_gamma_0.0_n_models_3_1589796218204',
-              'alpha_0.7_gamma_0.0_n_models_3_1589796234665']
-    alpha = list(map(lambda x: format(x, '2.1f'), np.arange(0.0, 0.8, 0.1)))
+    UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_3_1585505819121'
+    CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_3_1585505685528'
+    CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_3_1585505042819'
 
-    batch_size = 256  # 128  # 516
+    rel_dirs = [UNCORR_MODEL_DIR, CORR_MODEL_DIR, CORR_MODEL_DIR_2]
+    alpha = ['0', '0.1', '0.2']
+
+    res = dict.fromkeys(alpha)
+    batch_size = 128  # 516
     n_workers = 20
     dataset = 'CIFAR-10'
     network = 'densenet-82-8-8'
@@ -418,7 +319,7 @@ def run_attacks_cleverhans(res_path):
     n_models = 3
 
     params = {}
-    params['densenet-82-8-8'] = {'num_modules': n_models, 'bottleneck': True, 'reduction': 0.5, 'depth': 82, 'growth_rate': 8,
+    params['densenet-82-8-8'] = {'num_modules': 2, 'bottleneck': True, 'reduction': 0.5, 'depth': 82, 'growth_rate': 8,
                                  'input_shape': (3, 32, 32), 'output_dim': 10}
     network = 'densenet-82-8-8'
     model = DenseNet(input_shape=params[network]['input_shape'],
@@ -539,8 +440,7 @@ def ood_test(MODEL_DIR, res_path):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='for CBIS-DDSM')
-    parser.add_argument("-ood", "--ood_test", help="do ood test instead?", default=0, type=int)
-    parser.add_argument("-opa", "--one_pixel", help="do one pixel attack instead?", default=0, type=int)
+    parser.add_argument("-ood", "--ood_test", help="to ood test instead?", default=0, type=int)
 
     args = parser.parse_args()
     conf = get_config()
@@ -548,9 +448,6 @@ if __name__ == '__main__':
     if args.ood_test:
         res_path = str('cifar_ood_res.pkl')
         ood_test(res_path)
-    elif args.one_pixel:
-        res_path = str('cifar_one_pixle_attack_res.pkl')
-        run_OnePixleAttack(res_path)
     else:
         res_path = str('cifar_attack_res.pkl')
         run_attacks_cleverhans(res_path)
