@@ -44,10 +44,12 @@ if __name__ == '__main__':
     parser.add_argument("-morph_dir", "--morph_dir", help="use a morph directory", default='', type=str)
     parser.add_argument("-morph_a", "--morph_alpha", help="balance parameter", default=10., type=float)
 
+    parser.add_argument("-logdir", "--logdir", help="extend log/saves to a folder for group experiment", default='', type=str)
+
     parser.add_argument("-c", "--cpu_mode", help="force cpu mode", default=0, type=int)
 
     args = parser.parse_args()
-    conf = get_config()
+    conf = get_config(logext=args.logdir)
 
     # training param
     assert not (args.color_only and args.shape_only)  # choose at most one

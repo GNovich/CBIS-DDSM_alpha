@@ -222,8 +222,9 @@ class SourceDat(Dataset):
             label_dat = pd.Series(zip(self.table['label'], self.table['abnormality type']))
 
         # todo experiment
-        # self.table['pos_label'] = label_dat.map({(0, 'mass'): 0, (1, 'mass'): 1, (0, 'calcification'): 3, (1, 'calcification'): 4})
-        self.table['pos_label'] = (label_dat.astype('category').cat.codes + add_val).values
+        map_code = {(0, 'mass'): 0, (1, 'mass'): 1, (0, 'calcification'): 3, (1, 'calcification'): 4}
+        self.table['pos_label'] = label_dat.map(map_code).values
+        #self.table['pos_label'] = (label_dat.astype('category').cat.codes + add_val).values
 
         # 1 know faulty sample
         self.table = self.table[self.table['ROI mask file path png'] != 'Calc-Training_P_00474_LEFT_MLO_1.png']
@@ -269,7 +270,7 @@ class CBIS_PatchDataSet_INMEM(Dataset):
             img_path (string): path to the folder where images are
             transform: pytorch transforms for transforms and tensor conversion
         """
-        self.bkg_label = 0 #2 TODO exp
+        self.bkg_label = 2 #0 TODO exp
         self.og_resize = og_resize
         self.patch_size = patch_size
         self.patch_num = patch_num

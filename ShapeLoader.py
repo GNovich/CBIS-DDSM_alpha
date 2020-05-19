@@ -28,11 +28,11 @@ class ShapeDataSet(Dataset):
         self.aug = aug
 
         self.n_shapes = n_shapes
-        assert n_shapes in [1, 2, 3]
+        assert n_shapes in list(range(5))
         self.n_colors = n_colors
-        assert n_colors in [1, 2, 3]
+        assert n_colors in list(range(4))
 
-        self.shapes = ['rectangle', 'circle', 'triangle'][:n_shapes]
+        self.shapes = ['rectangle', 'circle', 'triangle', 'ellipse'][:n_shapes]
         self.colors = [[(255, 255), (0, 0), (0, 0)],
                        [(0, 0), (255, 255), (0, 0)],
                        [(0, 0), (0, 0), (255, 255)]]
