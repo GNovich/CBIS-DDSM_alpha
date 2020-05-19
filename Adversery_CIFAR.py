@@ -1,7 +1,5 @@
 from config import get_config
 import argparse
-from ShapeLearner import ShapeLearner
-from ShapeLoader import ShapeDataSet
 from torch.utils.data import DataLoader, RandomSampler
 import numpy as np
 import pickle
@@ -169,68 +167,6 @@ def get_dataloaders_(batch_size, trial_i, dataset='MNIST', augment=False, early_
 
     return dataloaders, params
 
-
-
-def prep_learner():
-    conf = get_config(2)
-    conf.device = 'cpu'
-    conf.net_mode = 'resnet18'
-    conf.n_shapes = 1
-    conf.n_colors = 3
-    conf.shape_only = False
-    conf.color_only = False
-    return ShapeLearner(conf, inference=True)
-
-
-def set_distractors(learner):
-    # set OOD data
-    triangle_ds = ShapeDataSet(no_bkg=True)
-    triangle_ds.shapes = ['triangle']
-    triangle_ds.colors = [[(255, 255), (0, 0), (0, 0)],
-                          [(0, 0), (255, 255), (0, 0)],
-                          [(0, 0), (0, 0), (255, 255)]]
-    triangle_ds.n_shapes = 1
-    triangle_ds.n_colors = 3
-    ziped_classes = enumerate(product(range(1), range(3)))
-    triangle_ds.label_map = {v: -1 for k, v in ziped_classes}
-    triangle_ds.label_names = [-1]
-    learner.ds = triangle_ds
-
-    dloader_args = {
-        'batch_size': 32,
-        'pin_memory': True,
-        'num_workers': conf.num_workers,
-        'drop_last': False,
-    }
-    learner.loader = DataLoader(learner.ds, **dloader_args)
-    eval_sampler = RandomSampler(learner.ds, replacement=True, num_samples=len(learner.ds) // 10)
-    learner.eval_loader = DataLoader(learner.ds, sampler=eval_sampler, **dloader_args)
-    return learner
-
-def set_probes(learner):
-    # set OOD data
-    triangle_ds = ShapeDataSet(no_bkg=True)
-    triangle_ds.shapes = ['rectangle', 'circle']
-    triangle_ds.colors = [[(255, 255), (0, 0), (0, 0)],
-                          [(0, 0), (255, 255), (0, 0)],
-                          ]  # [(0, 0), (0, 0), (255, 255)]]
-    triangle_ds.n_shapes = 2
-    triangle_ds.n_colors = 2  # TODO fix this! we need the right 2 in the right order!
-    ziped_classes = enumerate(product(range(triangle_ds.n_shapes), range(triangle_ds.n_colors)))
-    triangle_ds.label_map = {v: k for k, v in ziped_classes}
-    triangle_ds.label_names = [str(x) for x in product(triangle_ds.shapes, range(triangle_ds.n_colors))]
-    learner.ds = triangle_ds
-
-    dloader_args = {
-        'batch_size': 32,
-        'pin_memory': True,
-        'num_workers': conf.num_workers,
-        'drop_last': False,
-    }
-    learner.loader = DataLoader(learner.ds, **dloader_args)
-    eval_sampler = RandomSampler(learner.ds, replacement=True, num_samples=len(learner.ds) // 10)
-    learner.eval_loader = DataLoader(learner.ds, sampler=eval_sampler, **dloader_args)
-    return learner
 
 def get_evaluation(learner):
     # evaluate OOD data
@@ -537,32 +473,6 @@ def get_TTR_FTR_curve(prob_prob, distractors_prob, prob_labels):
             FTRs.append(FTR)
     return THs, TTRs, FTRs, corr
 
-
-def ood_test(MODEL_DIR, res_path):
-    rel_dirs = [x for x in os.listdir(MODEL_DIR) if '2020' in x]
-    alpha = [re.findall('a=([0-9, \.]*)_', d)[0] for d in rel_dirs]
-    learner = prep_learner()
-
-    res_dir = dict.fromkeys(alpha)
-    for model_path, curr_alpha in zip(rel_dirs, alpha):
-        conf.save_path = pathlib.Path(path.join(MODEL_DIR, model_path))
-        fix_str = [x for x in os.listdir(path.join(MODEL_DIR, model_path)) if '2020' in x][0][8:]
-        learner.load_state(conf, fix_str, model_only=True, from_save_folder=True)
-
-        # distractors
-        set_distractors(learner)
-        distractors_prob, distractors_predictions, distractors_labels = get_evaluation(learner)
-
-        # probs
-        set_probes(learner)
-        prob_prob, prob_predictions, prob_labels = get_evaluation(learner)
-
-        THs, TTRs, FTRs, corr = get_TTR_FTR_curve(prob_prob, distractors_prob, prob_labels)
-        print(curr_alpha, corr)
-        res_dir[curr_alpha] = [THs, TTRs, FTRs, corr]
-    pickle.dump(res_dir, open(res_path, 'wb'))
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='for CBIS-DDSM')
     parser.add_argument("-ood", "--ood_test", help="do ood test instead?", default=0, type=int)
@@ -574,10 +484,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     conf = get_config()
 
-    if args.ood_test:
-        res_path = str('cifar_ood_res.pkl')
-        ood_test(res_path)
-    elif args.one_pixel:
+    if args.one_pixel:
         res_path = str('cifar_one_pixle_attack_res.pkl')
         run_OnePixleAttack(res_path, args.model_num, args.n_pixel, args.ncl)
     else:
