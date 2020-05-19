@@ -333,26 +333,32 @@ def run_attacks(res_path):
     pickle.dump(res, open(res_path, 'wb'))
 
 
-def run_OnePixleAttack(res_path, model_num=-1, n_pixel=1):
-    MORPH_MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results_morph_correct/CIFAR-10/densenet-82-8-8'
-    MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results/CIFAR-10/densenet-82-8-8'
-    # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_2_1581641733617'
-    # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_2_1581641746832'
-    # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_2_1581641777871'
-    # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_3_1585505819121'
-    # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_3_1585505685528'
-    # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_3_1585505042819'
-    # rel_dirs = [UNCORR_MODEL_DIR, CORR_MODEL_DIR, CORR_MODEL_DIR_2]
-    # alpha = ['0', '0.1', '0.2']
-    rel_dirs = ['alpha_0.0_gamma_0.0_n_models_3_1585505819121',
-                'alpha_0.1_gamma_0.0_n_models_3_1589795142450',
-                'alpha_0.2_gamma_0.0_n_models_3_1589794987034',
-                'alpha_0.3_gamma_0.0_n_models_3_1589795486214',
-                'alpha_0.4_gamma_0.0_n_models_3_1589796192038',
-                'alpha_0.5_gamma_0.0_n_models_3_1589796200262',
-                'alpha_0.6_gamma_0.0_n_models_3_1589796218204',
-                'alpha_0.7_gamma_0.0_n_models_3_1589796234665']
-    alpha = list(map(lambda x: format(x, '2.1f'), np.arange(0.0, 0.8, 0.1)))
+def run_OnePixleAttack(res_path, model_num=-1, n_pixel=1, ncl=False):
+    if ncl:
+        MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results_ncl/CIFAR-10/densenet-82-8-8'
+        rel_dirs = ['alpha_0.0_gamma_0.02_n_models_2_1583114412120',
+                    'alpha_0.0_gamma_0.05_n_models_2_1583114439810']
+        alpha = ['0.02', '0.05']
+        res_path = res_path + '_ncl'
+    else:
+        MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results/CIFAR-10/densenet-82-8-8'
+        # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_2_1581641733617'
+        # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_2_1581641746832'
+        # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_2_1581641777871'
+        # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_3_1585505819121'
+        # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_3_1585505685528'
+        # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_3_1585505042819'
+        # rel_dirs = [UNCORR_MODEL_DIR, CORR_MODEL_DIR, CORR_MODEL_DIR_2]
+        rel_dirs = ['alpha_0.0_gamma_0.0_n_models_3_1585505819121',
+                  'alpha_0.1_gamma_0.0_n_models_3_1589795142450',
+                  'alpha_0.2_gamma_0.0_n_models_3_1589794987034',
+                  'alpha_0.3_gamma_0.0_n_models_3_1589795486214',
+                  'alpha_0.4_gamma_0.0_n_models_3_1589796192038',
+                  'alpha_0.5_gamma_0.0_n_models_3_1589796200262',
+                  'alpha_0.6_gamma_0.0_n_models_3_1589796218204',
+                  'alpha_0.7_gamma_0.0_n_models_3_1589796234665']
+        alpha = list(map(lambda x: format(x, '2.1f'), np.arange(0.0, 0.8, 0.1)))
+
     if model_num!=-1:
         rel_dirs = [rel_dirs[model_num]]
         alpha = [alpha[model_num]]
@@ -363,7 +369,7 @@ def run_OnePixleAttack(res_path, model_num=-1, n_pixel=1):
     dataset = 'CIFAR-10'
     network = 'densenet-82-8-8'
     loaders, _ = get_dataloaders_(batch_size, 0, dataset, False, early_stop=False, n_workers=n_workers)
-    n_models = 3
+    n_models = 3 if not ncl else 2
 
     params = {}
     params['densenet-82-8-8'] = {'num_modules': n_models, 'bottleneck': True, 'reduction': 0.5, 'depth': 82, 'growth_rate': 8,
@@ -380,7 +386,11 @@ def run_OnePixleAttack(res_path, model_num=-1, n_pixel=1):
     device = torch.device("cuda")
     reports = dict.fromkeys(alpha)
     for model_path, curr_alpha in tqdm(zip(rel_dirs, alpha), total=len(alpha)):
-        weight_path = path.join(MODEL_DIR, model_path, 'trial_0/0.0/weights/final_weights.pt')
+        if ncl:
+            weight_path = path.join(MODEL_DIR, model_path, 'trial_0/' + curr_alpha + '/weights/final_weights.pt')
+        else:
+            weight_path = path.join(MODEL_DIR, model_path, 'trial_0/0.0/weights/final_weights.pt')
+
         model.reset_parameters()
         model.load_state_dict(torch.load(weight_path))
         model.eval()  # model.train(mode=False)
@@ -397,32 +407,38 @@ from absl import app, flags
 from easydict import EasyDict
 from cleverhans.future.torch.attacks import fast_gradient_method, projected_gradient_descent
 FLAGS = flags.FLAGS
-def run_attacks_cleverhans(res_path):
-    MORPH_MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results_morph_correct/CIFAR-10/densenet-82-8-8'
-    MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results/CIFAR-10/densenet-82-8-8'
-    # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_2_1581641733617'
-    # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_2_1581641746832'
-    # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_2_1581641777871'
-    # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_3_1585505819121'
-    # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_3_1585505685528'
-    # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_3_1585505042819'
-    # rel_dirs = [UNCORR_MODEL_DIR, CORR_MODEL_DIR, CORR_MODEL_DIR_2]
-    rel_dirs = ['alpha_0.0_gamma_0.0_n_models_3_1585505819121',
-              'alpha_0.1_gamma_0.0_n_models_3_1589795142450',
-              'alpha_0.2_gamma_0.0_n_models_3_1589794987034',
-              'alpha_0.3_gamma_0.0_n_models_3_1589795486214',
-              'alpha_0.4_gamma_0.0_n_models_3_1589796192038',
-              'alpha_0.5_gamma_0.0_n_models_3_1589796200262',
-              'alpha_0.6_gamma_0.0_n_models_3_1589796218204',
-              'alpha_0.7_gamma_0.0_n_models_3_1589796234665']
-    alpha = list(map(lambda x: format(x, '2.1f'), np.arange(0.0, 0.8, 0.1)))
+def run_attacks_cleverhans(res_path, ncl=False):
+    if ncl:
+        MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results_ncl/CIFAR-10/densenet-82-8-8'
+        rel_dirs = ['alpha_0.0_gamma_0.02_n_models_2_1583114412120',
+                    'alpha_0.0_gamma_0.05_n_models_2_1583114439810']
+        alpha = ['0.02', '0.05']
+        res_path = res_path + '_ncl'
+    else:
+        MODEL_DIR = '/mnt/md0/orville/Miriam/modular-loss-experiments-morph/results/CIFAR-10/densenet-82-8-8'
+        # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_2_1581641733617'
+        # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_2_1581641746832'
+        # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_2_1581641777871'
+        # UNCORR_MODEL_DIR = 'alpha_0.0_gamma_0.0_n_models_3_1585505819121'
+        # CORR_MODEL_DIR = 'alpha_0.1_gamma_0.0_n_models_3_1585505685528'
+        # CORR_MODEL_DIR_2 = 'alpha_0.2_gamma_0.0_n_models_3_1585505042819'
+        # rel_dirs = [UNCORR_MODEL_DIR, CORR_MODEL_DIR, CORR_MODEL_DIR_2]
+        rel_dirs = ['alpha_0.0_gamma_0.0_n_models_3_1585505819121',
+                  'alpha_0.1_gamma_0.0_n_models_3_1589795142450',
+                  'alpha_0.2_gamma_0.0_n_models_3_1589794987034',
+                  'alpha_0.3_gamma_0.0_n_models_3_1589795486214',
+                  'alpha_0.4_gamma_0.0_n_models_3_1589796192038',
+                  'alpha_0.5_gamma_0.0_n_models_3_1589796200262',
+                  'alpha_0.6_gamma_0.0_n_models_3_1589796218204',
+                  'alpha_0.7_gamma_0.0_n_models_3_1589796234665']
+        alpha = list(map(lambda x: format(x, '2.1f'), np.arange(0.0, 0.8, 0.1)))
 
     batch_size = 256  # 128  # 516
     n_workers = 20
     dataset = 'CIFAR-10'
     network = 'densenet-82-8-8'
     loaders, _ = get_dataloaders_(batch_size, 0, dataset, False, early_stop=False, n_workers=n_workers)
-    n_models = 3
+    n_models = 2 if ncl else 3
 
     params = {}
     params['densenet-82-8-8'] = {'num_modules': n_models, 'bottleneck': True, 'reduction': 0.5, 'depth': 82, 'growth_rate': 8,
@@ -439,7 +455,10 @@ def run_attacks_cleverhans(res_path):
     device = torch.device("cuda")
     reports = dict.fromkeys(alpha)
     for model_path, curr_alpha in tqdm(zip(rel_dirs, alpha), total=len(alpha)):
-        weight_path = path.join(MODEL_DIR, model_path, 'trial_0/0.0/weights/final_weights.pt')
+        if ncl:
+            weight_path = path.join(MODEL_DIR, model_path, 'trial_0/' + curr_alpha + '/weights/final_weights.pt')
+        else:
+            weight_path = path.join(MODEL_DIR, model_path, 'trial_0/0.0/weights/final_weights.pt')
         model.reset_parameters()
         model.load_state_dict(torch.load(weight_path))
         model.eval()  # model.train(mode=False)
@@ -550,6 +569,7 @@ if __name__ == '__main__':
     parser.add_argument("-opa", "--one_pixel", help="do one pixel attack instead?", default=0, type=int)
     parser.add_argument("-model_num", "--model_num", help="run a spesific model?", default=-1, type=int)
     parser.add_argument("-n_pixel", "--n_pixel", help="n_pixel?", default=1, type=int)
+    parser.add_argument("-ncl", "--ncl", help="ncl", default=0, type=int)
 
     args = parser.parse_args()
     conf = get_config()
@@ -559,8 +579,8 @@ if __name__ == '__main__':
         ood_test(res_path)
     elif args.one_pixel:
         res_path = str('cifar_one_pixle_attack_res.pkl')
-        run_OnePixleAttack(res_path, args.model_num, args.n_pixel)
+        run_OnePixleAttack(res_path, args.model_num, args.n_pixel, args.ncl)
     else:
         res_path = str('cifar_attack_res.pkl')
-        run_attacks_cleverhans(res_path)
+        run_attacks_cleverhans(res_path, ncl=args.ncl)
         #run_attacks(res_path)
